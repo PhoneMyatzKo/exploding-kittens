@@ -374,3 +374,96 @@ func somePlay(v *view.View, rng *rand.Rand) (ClientMsg, bool) {
 	}
 	return m, true
 }
+
+// driveToGameOver plays random legal moves until somebody is left standing, so
+// the tests below can start from a finished game.
+func driveToGameOver(t *testing.T, h *harness, seed int64) {
+	t.Helper()
+	rng := rand.New(rand.NewSource(seed))
+	for step := 0; step < 600; step++ {
+		if v, _ := h.recs[0].snapshot(); v.Phase == "game_over" {
+			return
+		}
+		i, msg, ok := nextMove(h, rng)
+		if !ok {
+			t.Fatalf("step %d: nobody could act (phase=%s)", step, mustPhase(h))
+		}
+		h.act(t, i, msg)
+	}
+	t.Fatalf("game did not finish in 600 moves (phase=%s)", mustPhase(h))
+}
+
+// awaitError waits for the next rejection sent to one player.
+func awaitError(t *testing.T, rec *recorder, want string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if errs := rec.errors(); len(errs) > 0 {
+			if !strings.Contains(errs[0], want) {
+				t.Errorf("error = %q, want it to mention %q", errs[0], want)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("expected a rejection mentioning %q, got none", want)
+}
+
+func TestReturnToLobbyAfterGameOver(t *testing.T) {
+	h := newHarness(t, 3)
+	h.start(t)
+	driveToGameOver(t, h, 42)
+
+	v := h.act(t, 0, ClientMsg{Type: "lobby"})
+	if v.Started {
+		t.Fatal("still in a started game after returning to the lobby")
+	}
+	// Everyone comes back, including anyone the finished round had eliminated:
+	// that is the whole point of the lobby over dealing again.
+	if len(v.Seats) != 3 {
+		t.Fatalf("seats = %d, want all 3 back in the lobby", len(v.Seats))
+	}
+	if len(v.Log) != 0 {
+		t.Errorf("log = %d entries, want the previous round cleared", len(v.Log))
+	}
+	for i, rec := range h.recs {
+		got, _ := rec.snapshot()
+		if got.Started {
+			t.Errorf("player %d is still looking at the table", i)
+		}
+	}
+
+	// The room has to be genuinely reusable afterwards.
+	if v = h.start(t); !v.Started {
+		t.Fatal("could not deal again from the reopened lobby")
+	}
+	for i, rec := range h.recs {
+		got, _ := rec.snapshot()
+		if len(got.Me.Hand) != 8 {
+			t.Errorf("player %d hand = %d cards on the new deal, want 8", i, len(got.Me.Hand))
+		}
+	}
+}
+
+func TestOnlyHostCanReturnToLobby(t *testing.T) {
+	h := newHarness(t, 3)
+	h.start(t)
+	driveToGameOver(t, h, 42)
+
+	h.room.Submit(h.ids[1], ClientMsg{Type: "lobby"})
+	awaitError(t, h.recs[1], "host")
+	if v, _ := h.recs[1].snapshot(); !v.Started {
+		t.Error("a non-host managed to reopen the lobby")
+	}
+}
+
+func TestReturnToLobbyMidGameIsRefused(t *testing.T) {
+	h := newHarness(t, 3)
+	h.start(t)
+
+	h.room.Submit(h.ids[0], ClientMsg{Type: "lobby"})
+	awaitError(t, h.recs[0], "already started")
+	if v, _ := h.recs[0].snapshot(); !v.Started {
+		t.Error("the host wiped a game in progress")
+	}
+}

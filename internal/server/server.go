@@ -20,10 +20,12 @@ func New(mgr *room.Manager) http.Handler {
 
 	mux.Handle("/", noCache(http.FileServer(http.FS(web.Assets))))
 
-	// Card art is immutable once built into the binary, so unlike the client it
-	// is worth caching hard — it is by far the heaviest thing we serve.
+	// Media is immutable once built into the binary, so unlike the client it is
+	// worth caching hard — it is by far the heaviest thing we serve.
 	mux.Handle("GET /cards/", http.StripPrefix("/cards/",
 		immutable(http.FileServer(http.FS(static.CardArt())))))
+	mux.Handle("GET /audio/", http.StripPrefix("/audio/",
+		immutable(http.FileServer(http.FS(static.Audio())))))
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		rm := mgr.Create()

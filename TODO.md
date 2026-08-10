@@ -1,0 +1,5 @@
+- if a player is exploded, show animated explosion at the center of the screen, then fade out and remove the player from the game if the player has no defuse card.
+- if a player has defuse card, show an animation at the center of the screen indicating that the player has defused the bomb, then remove the defuse card from the player's hand and continue the game.
+- show the rules for the game in a modal or separate screen, accessible from the lobby or during the game.
+- show the percentage of players who will get exploding-kitten card and updating in real-time as players are eliminated.
+- 

@@ -90,11 +90,72 @@ internal/room     one goroutine per table; owns all mutable state
 internal/view     redaction: turns the game into a per-player payload
 internal/game     the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
-static/           scanned card faces, served from /cards, also embedded
+static/           card scans (/cards) and the intro theme (/audio), embedded
 ```
 
 Cards without a scan in `static/src/images` fall back to the emoji glyph in
 `web/app.js`, so the art set can stay incomplete without anything breaking.
+
+## Theme
+
+Five values, and nothing outside them:
+
+```
+crimson  #820a12    gold  #fbc240    paper  #fdfeff    grey  #5f5d5c
+gradient #e72834 → #ffc942
+```
+
+Every other colour in `style.css` is one of those alpha-composited over
+another, annotated with the mix it stands for. Two consequences worth knowing
+before editing it:
+
+- **Two surface families.** Crimson is the app ground; `.panel`, `.modal-box`,
+  `.log-panel`, `.toast`, `.nope-bar` and `.card` switch to paper. Each family
+  declares its own `--ink`/`--muted`/`--line`, so component rules never need to
+  know which one they are on. The palette forces the split — grey is 1.9:1 on
+  crimson but 6.5:1 on paper.
+- **The gradient cannot carry text.** Paper drops to 1.6:1 against its gold
+  end, and crimson to 2.4:1 against its red end, so no ink is readable across
+  the whole sweep. It is therefore used only on decorative surfaces, or behind
+  a crimson scrim (the deck back) that brings the label back to 6.2:1. Buttons
+  and other labelled controls take solid gold with crimson ink, at 6.4:1.
+
+Card type coding collapses to three families, since thirteen hues cannot fit
+five colours: a gold band for the powerless cat cards, the gradient for cards
+that do something, solid crimson for the Exploding Kitten.
+
+## Music
+
+Two tracks, both optional, both under `static/src/audio`:
+
+- `intro.mp3` — loops over the title and lobby screens, fades out on the deal.
+- `theme_song1.mp3` — plays once over the game-over screen, then stops.
+
+**Nothing plays during a turn, on purpose.** The format is one phone per player,
+so a continuous bed is really five copies of the same track drifting out of sync
+in one room — worse than silence. Music is confined to the moments when every
+device is on the same screen at the same time. The policy lives in one function,
+`syncSound()` in `web/app.js`; change it there.
+
+A missing file means silence — nothing errors, and the toggle still works. Mute
+state is remembered per browser under `ek:muted`. Browsers will not start audio
+before the page has been interacted with, so a rejected `play()` arms a one-shot
+gesture listener and retries rather than giving up.
+
+`static.go` embeds by extension (`src/images/*.jpg`, `src/audio/*.mp3`) so that
+working files sitting next to the assets — a rules PDF, a 46 MB download a clip
+was cut from — never end up in the binary.
+
+## After a game
+
+The game-over screen gives the host two ways on:
+
+- **Deal again** seats whoever is connected at that moment and starts a round.
+- **Back to lobby** drops the finished game so the whole table returns to the
+  lobby together. This is the only way to pick up players who joined or
+  reconnected mid-round, since dealing again forgets everyone who was not
+  present. Refused while a game is still in progress, so it cannot be used to
+  wipe a losing position.
 
 Two ideas carry most of the weight:
 

@@ -294,6 +294,10 @@ func (r *Room) handleMsg(c cmdMsg) {
 		r.handleStart(m)
 		return
 	}
+	if c.msg.Type == "lobby" {
+		r.handleReturnToLobby(m)
+		return
+	}
 	if r.state == nil {
 		r.sendErr(m, "the game hasn't started yet")
 		return
@@ -344,6 +348,32 @@ func (r *Room) handleStart(m *member) {
 	r.appendLog(view.Entry{Kind: "started"})
 	r.appendLog(view.Entry{Kind: "turn", ActorID: s.CurrentID()})
 	r.rearmTimers()
+	r.broadcast()
+}
+
+// handleReturnToLobby drops the finished game so the whole table lands back in
+// the lobby together, which is the only way to pick up players who joined or
+// reconnected during the last round — handleStart deals in whoever is present
+// at that moment and forgets the rest.
+//
+// Restricted to a finished game on purpose: mid-round this would be a way for
+// the host to wipe a losing position.
+func (r *Room) handleReturnToLobby(m *member) {
+	if !m.Host {
+		r.sendErr(m, ErrNotHost.Error())
+		return
+	}
+	if r.state == nil {
+		return // already in the lobby; nothing to undo
+	}
+	if r.state.Phase != game.PhaseGameOver {
+		r.sendErr(m, ErrInProgress.Error())
+		return
+	}
+	r.state = nil
+	r.logbuf = nil
+	r.inWindow = false
+	r.rearmTimers() // both timers stop themselves once state is nil
 	r.broadcast()
 }
 
