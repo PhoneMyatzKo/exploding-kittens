@@ -1,0 +1,387 @@
+package server
+
+import (
+	"encoding/json"
+	"math/rand"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"boardgame/kittens/internal/room"
+	"boardgame/kittens/internal/view"
+
+	"github.com/gorilla/websocket"
+)
+
+// player is a headless browser: it speaks the same JSON over the same WebSocket
+// a real client does, and knows nothing the redacted view doesn't tell it.
+type player struct {
+	conn  *websocket.Conn
+	mu    sync.Mutex
+	state *view.View
+	seen  int
+	errs  []string
+	id    string
+	token string
+}
+
+func dial(t *testing.T, base, code, name, token string) *player {
+	t.Helper()
+	u, _ := url.Parse(base)
+	u.Scheme = "ws"
+	u.Path = "/ws"
+	u.RawQuery = url.Values{"code": {code}, "name": {name}, "token": {token}}.Encode()
+
+	conn, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		t.Fatalf("dial %s: %v (http %d)", name, err, status)
+	}
+	p := &player{conn: conn}
+	t.Cleanup(func() { conn.Close() })
+	go p.readLoop()
+	return p
+}
+
+func (p *player) readLoop() {
+	for {
+		_, data, err := p.conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var head struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(data, &head) != nil {
+			continue
+		}
+		p.mu.Lock()
+		switch head.Type {
+		case "joined":
+			var j struct{ PlayerID, Token string }
+			var raw map[string]string
+			_ = json.Unmarshal(data, &raw)
+			j.PlayerID, j.Token = raw["playerId"], raw["token"]
+			p.id, p.token = j.PlayerID, j.Token
+		case "state":
+			var v view.View
+			if json.Unmarshal(data, &v) == nil {
+				p.state = &v
+				p.seen++
+			}
+		case "error", "fatal":
+			var e struct {
+				Message string `json:"message"`
+			}
+			_ = json.Unmarshal(data, &e)
+			p.errs = append(p.errs, e.Message)
+		}
+		p.mu.Unlock()
+	}
+}
+
+func (p *player) snapshot() (*view.View, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.state, p.seen
+}
+
+func (p *player) errors() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.errs...)
+}
+
+func (p *player) await(t *testing.T, since int) *view.View {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if v, n := p.snapshot(); n > since && v != nil {
+			return v
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("timed out waiting for a state message")
+	return nil
+}
+
+func (p *player) send(t *testing.T, msg room.ClientMsg) {
+	t.Helper()
+	b, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.conn.WriteMessage(websocket.TextMessage, b); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+}
+
+func newTestServer(t *testing.T) (string, *room.Manager) {
+	t.Helper()
+	mgr := room.NewManager()
+	srv := httptest.NewServer(New(mgr))
+	t.Cleanup(func() {
+		srv.Close()
+		mgr.Shutdown()
+	})
+	return srv.URL, mgr
+}
+
+func createRoom(t *testing.T, base string) string {
+	t.Helper()
+	resp, err := http.Post(base+"/api/rooms", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Code) != 4 {
+		t.Fatalf("room code = %q, want 4 characters", out.Code)
+	}
+	return out.Code
+}
+
+// ------------------------------------------------------------------ tests
+
+func TestStaticClientIsServed(t *testing.T) {
+	base, _ := newTestServer(t)
+	for _, path := range []string{"/", "/app.js", "/style.css"} {
+		resp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: status %d, want 200", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestJoiningAnUnknownRoomIsRejected(t *testing.T) {
+	base, _ := newTestServer(t)
+	u, _ := url.Parse(base)
+	u.Scheme = "ws"
+	u.Path = "/ws"
+	u.RawQuery = "code=ZZZZ&name=Nobody"
+
+	_, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err == nil {
+		t.Fatal("dial to a nonexistent room succeeded")
+	}
+	if resp == nil || resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %v, want 404", resp)
+	}
+}
+
+func TestRoomLookupEndpoint(t *testing.T) {
+	base, _ := newTestServer(t)
+	code := createRoom(t, base)
+
+	// Lower case and stray punctuation should still find the room.
+	resp, err := http.Get(base + "/api/rooms/" + strings.ToLower(code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+
+	resp, err = http.Get(base + "/api/rooms/ZZZZ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 for an unknown code", resp.StatusCode)
+	}
+}
+
+// TestFullGameOverWebSockets plays a real game to a winner across three live
+// WebSocket connections, driven purely from what each client is told. This is
+// the automated stand-in for opening three browser tabs.
+func TestFullGameOverWebSockets(t *testing.T) {
+	base, _ := newTestServer(t)
+	code := createRoom(t, base)
+
+	names := []string{"Ann", "Bob", "Cid"}
+	players := make([]*player, len(names))
+	for i, n := range names {
+		players[i] = dial(t, base, code, n, "")
+		players[i].await(t, 0)
+	}
+
+	act(t, players, 0, room.ClientMsg{Type: "start"})
+	for i, p := range players {
+		v, _ := p.snapshot()
+		if !v.Started || len(v.Me.Hand) != 8 {
+			t.Fatalf("player %d: started=%v hand=%d, want started with 8 cards", i, v.Started, len(v.Me.Hand))
+		}
+	}
+
+	rng := rand.New(rand.NewSource(7))
+	for step := 0; step < 800; step++ {
+		v, _ := players[0].snapshot()
+		if v.Phase == "game_over" {
+			if v.WinnerID == "" {
+				t.Fatal("game over with no winner")
+			}
+			for i, p := range players {
+				got, _ := p.snapshot()
+				if got.WinnerID != v.WinnerID {
+					t.Fatalf("player %d disagrees about the winner: %q vs %q", i, got.WinnerID, v.WinnerID)
+				}
+			}
+			t.Logf("winner: %s after %d moves", v.WinnerID, step)
+			return
+		}
+
+		i, msg, ok := chooseMove(players, rng)
+		if !ok {
+			t.Fatalf("step %d: nobody could act (phase=%s)", step, v.Phase)
+		}
+		act(t, players, i, msg)
+
+		for j, p := range players {
+			if errs := p.errors(); len(errs) > 0 {
+				t.Fatalf("step %d: player %d rejected: %v", step, j, errs)
+			}
+		}
+	}
+	t.Fatal("game did not finish in 800 moves")
+}
+
+func TestReconnectOverWebSocket(t *testing.T) {
+	base, _ := newTestServer(t)
+	code := createRoom(t, base)
+
+	a := dial(t, base, code, "Ann", "")
+	a.await(t, 0)
+	b := dial(t, base, code, "Bob", "")
+	b.await(t, 0)
+
+	act(t, []*player{a, b}, 0, room.ClientMsg{Type: "start"})
+	before, _ := a.snapshot()
+
+	a.mu.Lock()
+	token, id := a.token, a.id
+	a.mu.Unlock()
+	if token == "" {
+		t.Fatal("no token was issued")
+	}
+
+	a.conn.Close()
+	a2 := dial(t, base, code, "Ann", token)
+	after := a2.await(t, 0)
+
+	a2.mu.Lock()
+	newID := a2.id
+	a2.mu.Unlock()
+	if newID != id {
+		t.Errorf("player id after reconnect = %s, want %s", newID, id)
+	}
+	if len(after.Me.Hand) != len(before.Me.Hand) {
+		t.Errorf("hand after reconnect = %d cards, want %d", len(after.Me.Hand), len(before.Me.Hand))
+	}
+}
+
+// ------------------------------------------------------------------ driving
+
+// act sends a message and waits until every client has observed the result, so
+// the next decision is never made from a stale view.
+func act(t *testing.T, players []*player, i int, msg room.ClientMsg) {
+	t.Helper()
+	before := make([]int, len(players))
+	for j, p := range players {
+		_, before[j] = p.snapshot()
+	}
+	players[i].send(t, msg)
+	for j, p := range players {
+		p.await(t, before[j])
+	}
+}
+
+func chooseMove(players []*player, rng *rand.Rand) (int, room.ClientMsg, bool) {
+	for i, p := range players {
+		v, _ := p.snapshot()
+		if v == nil {
+			continue
+		}
+		switch {
+		case v.Me.MustPlace:
+			return i, room.ClientMsg{Type: "place", Index: rng.Intn(v.DeckCount + 1)}, true
+		case v.Me.MustGive:
+			return i, room.ClientMsg{Type: "give", CardIDs: []int{v.Me.Hand[0].ID}}, true
+		case v.Me.CanPass:
+			if v.Me.CanNope && rng.Intn(2) == 0 {
+				return i, room.ClientMsg{Type: "nope"}, true
+			}
+			return i, room.ClientMsg{Type: "pass"}, true
+		}
+	}
+	for i, p := range players {
+		v, _ := p.snapshot()
+		if v == nil || !v.Me.MyTurn {
+			continue
+		}
+		if rng.Intn(3) > 0 {
+			if msg, ok := pickPlay(v, rng); ok {
+				return i, msg, true
+			}
+		}
+		return i, room.ClientMsg{Type: "draw"}, true
+	}
+	return 0, room.ClientMsg{}, false
+}
+
+func pickPlay(v *view.View, rng *rand.Rand) (room.ClientMsg, bool) {
+	var others []string
+	for _, s := range v.Seats {
+		if s.Alive && s.ID != v.Me.ID {
+			others = append(others, s.ID)
+		}
+	}
+	if len(others) == 0 {
+		return room.ClientMsg{}, false
+	}
+	target := others[rng.Intn(len(others))]
+
+	cats := map[string][]int{}
+	var slugs []string
+	var ids []int
+	for _, c := range v.Me.Hand {
+		switch {
+		case strings.HasPrefix(c.Slug, "cat-"):
+			cats[c.Slug] = append(cats[c.Slug], c.ID)
+		case c.Slug == "skip", c.Slug == "attack", c.Slug == "shuffle", c.Slug == "future", c.Slug == "favor":
+			slugs = append(slugs, c.Slug)
+			ids = append(ids, c.ID)
+		}
+	}
+	for _, pair := range cats {
+		if len(pair) >= 2 {
+			return room.ClientMsg{Type: "play", CardIDs: pair[:2], TargetID: target}, true
+		}
+	}
+	if len(slugs) == 0 {
+		return room.ClientMsg{}, false
+	}
+	k := rng.Intn(len(slugs))
+	m := room.ClientMsg{Type: "play", CardIDs: []int{ids[k]}}
+	if slugs[k] == "favor" {
+		m.TargetID = target
+	}
+	return m, true
+}
