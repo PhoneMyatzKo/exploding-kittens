@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"boardgame/kittens/internal/view"
+	"boardgame/kittens/static"
 )
 
 // recorder is a fake client connection. It decodes whatever the room sends so
@@ -465,5 +466,136 @@ func TestReturnToLobbyMidGameIsRefused(t *testing.T) {
 	awaitError(t, h.recs[0], "already started")
 	if v, _ := h.recs[0].snapshot(); !v.Started {
 		t.Error("the host wiped a game in progress")
+	}
+}
+
+// The client animates explosions by comparing log seqs against a high-water
+// mark, so they have to be unique and increasing — including across rounds,
+// where a repeated number would make an old event look new.
+func TestLogSeqsAlwaysClimb(t *testing.T) {
+	h := newHarness(t, 3)
+	h.start(t)
+	driveToGameOver(t, h, 42)
+
+	seen := 0
+	check := func(v *view.View, when string) {
+		t.Helper()
+		for _, e := range v.Log {
+			if e.Seq <= seen {
+				t.Fatalf("%s: log seq %d after %d — not increasing", when, e.Seq, seen)
+			}
+			seen = e.Seq
+		}
+	}
+	v, _ := h.recs[0].snapshot()
+	check(v, "first round")
+
+	h.act(t, 0, ClientMsg{Type: "lobby"})
+	check(h.start(t), "second round")
+	if seen == 0 {
+		t.Fatal("no log entries carried a seq at all")
+	}
+}
+
+// avatarOf reads a seat's portrait out of a view, since seat order is the room's
+// business and not something a test should assume.
+func avatarOf(t *testing.T, v *view.View, id string) string {
+	t.Helper()
+	for _, s := range v.Seats {
+		if s.ID == id {
+			return s.Avatar
+		}
+	}
+	t.Fatalf("no seat for %s in the view", id)
+	return ""
+}
+
+// twoAvatars returns two portrait ids to play with, straight from the embedded
+// set so the test tracks whatever art actually shipped.
+func twoAvatars(t *testing.T) (string, string) {
+	t.Helper()
+	ids := static.AvatarIDs()
+	if len(ids) < 2 {
+		t.Skipf("need two embedded portraits, have %d", len(ids))
+	}
+	return ids[0], ids[1]
+}
+
+func TestAvatarIsVisibleToEveryone(t *testing.T) {
+	cat, _ := twoAvatars(t)
+	h := newHarness(t, 2)
+
+	v := h.act(t, 0, ClientMsg{Type: "avatar", Avatar: cat})
+	if got := avatarOf(t, v, h.ids[0]); got != cat {
+		t.Fatalf("own avatar = %q, want %q", got, cat)
+	}
+	// The other player's view is what greys the portrait out in their picker, so
+	// it matters as much as the picker's owner seeing it.
+	other, _ := h.recs[1].snapshot()
+	if got := avatarOf(t, other, h.ids[0]); got != cat {
+		t.Errorf("avatar as seen by the other player = %q, want %q", got, cat)
+	}
+
+	// It survives the deal, so seats at the table can show it too.
+	v = h.start(t)
+	if got := avatarOf(t, v, h.ids[0]); got != cat {
+		t.Errorf("avatar after dealing = %q, want %q", got, cat)
+	}
+}
+
+func TestAvatarCannotBeTakenTwice(t *testing.T) {
+	cat, otherCat := twoAvatars(t)
+	h := newHarness(t, 2)
+	h.act(t, 0, ClientMsg{Type: "avatar", Avatar: cat})
+
+	h.room.Submit(h.ids[1], ClientMsg{Type: "avatar", Avatar: cat})
+	awaitError(t, h.recs[1], "already picked")
+	v, _ := h.recs[1].snapshot()
+	if got := avatarOf(t, v, h.ids[1]); got != "" {
+		t.Errorf("second player took a claimed cat: %q", got)
+	}
+
+	// A free one still works.
+	v = h.act(t, 1, ClientMsg{Type: "avatar", Avatar: otherCat})
+	if got := avatarOf(t, v, h.ids[1]); got != otherCat {
+		t.Errorf("second player's avatar = %q, want %q", got, otherCat)
+	}
+	if got := avatarOf(t, v, h.ids[0]); got != cat {
+		t.Errorf("first player's avatar = %q, want it untouched at %q", got, cat)
+	}
+}
+
+func TestSwitchingAvatarReleasesTheOldOne(t *testing.T) {
+	cat, otherCat := twoAvatars(t)
+	h := newHarness(t, 2)
+
+	h.act(t, 0, ClientMsg{Type: "avatar", Avatar: cat})
+	h.act(t, 0, ClientMsg{Type: "avatar", Avatar: otherCat})
+
+	v := h.act(t, 1, ClientMsg{Type: "avatar", Avatar: cat})
+	if got := avatarOf(t, v, h.ids[1]); got != cat {
+		t.Errorf("avatar = %q, want the abandoned %q to be free", got, cat)
+	}
+}
+
+func TestUnknownAvatarIsRefused(t *testing.T) {
+	h := newHarness(t, 2)
+
+	h.room.Submit(h.ids[0], ClientMsg{Type: "avatar", Avatar: "../cards/Beard-Cat.jpg"})
+	awaitError(t, h.recs[0], "no such cat")
+	if v, _ := h.recs[0].snapshot(); avatarOf(t, v, h.ids[0]) != "" {
+		t.Error("a made-up avatar id was stored")
+	}
+}
+
+func TestAvatarCannotChangeMidGame(t *testing.T) {
+	cat, _ := twoAvatars(t)
+	h := newHarness(t, 2)
+	h.start(t)
+
+	h.room.Submit(h.ids[0], ClientMsg{Type: "avatar", Avatar: cat})
+	awaitError(t, h.recs[0], "lobby")
+	if v, _ := h.recs[0].snapshot(); avatarOf(t, v, h.ids[0]) != "" {
+		t.Error("a portrait changed under a seat mid-round")
 	}
 }

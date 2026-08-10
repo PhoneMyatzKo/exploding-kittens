@@ -32,6 +32,28 @@ const ART = {
 
 const artURL = (slug) => (ART[slug] ? `/cards/${encodeURIComponent(ART[slug])}` : "");
 
+// ────────────────────────────────────────────────────────── avatars
+
+// Fetched rather than listed here, so the embedded PNGs stay the one catalogue.
+const avatars = { ids: [] };
+
+const avatarURL = (id) => `/avatars/${encodeURIComponent(id)}.png`;
+const avatarLabel = (id) =>
+  id.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+async function loadAvatars() {
+  try {
+    const res = await fetch("/api/avatars");
+    if (!res.ok) return;
+    const body = await res.json();
+    avatars.ids = body.avatars || [];
+  } catch {
+    return; // the picker simply never appears; names still tell people apart
+  }
+  // The lobby may already be on screen: this finishes after the socket opens.
+  if (app.view && !app.view.started) renderLobby(app.view);
+}
+
 const app = {
   ws: null,
   view: null,          // latest server state
@@ -39,9 +61,13 @@ const app = {
   code: "",
   name: "",
   selected: new Set(), // card ids picked out of our hand
+  coverHand: false,    // hand shown face-down, for nosy neighbours
+  peeked: new Set(),   // cards turned back over while covered
+  flipping: 0,         // the card id whose flip animation should run
   awaitingTarget: false,
   modal: null,         // which modal is open, so render() doesn't reopen it
   windowEndsAt: 0,     // performance.now() deadline for the Nope countdown
+  seenSeq: null,       // highest log seq animated; null until the first state
   reconnectDelay: 500,
   closingOnPurpose: false,
 };
@@ -74,6 +100,32 @@ const TRACKS = {
   intro: { src: "/audio/intro.mp3", volume: 0.55, loop: true },
   theme: { src: "/audio/theme_song1.mp3", volume: 0.6, loop: false },
 };
+
+// The draw is a sound effect, not music, and deliberately outside the mute
+// toggle: that switch is about not having five phones playing the same track,
+// which a quarter-second card flick is not.
+const DRAW_SFX = { src: "/audio/draw.mp3", volume: 0.5 };
+const sfx = { el: null, broken: false };
+
+function sfxEl() {
+  if (sfx.broken) return null;
+  if (!sfx.el) {
+    const a = new Audio(DRAW_SFX.src);
+    a.preload = "auto";
+    a.volume = DRAW_SFX.volume;
+    a.addEventListener("error", () => { sfx.broken = true; sfx.el = null; }, { once: true });
+    sfx.el = a;
+  }
+  return sfx.el;
+}
+
+function playDrawSfx() {
+  const a = sfxEl();
+  if (!a) return;
+  a.currentTime = 0;
+  a.volume = DRAW_SFX.volume;
+  a.play().catch(() => armAudio());
+}
 
 const sound = {
   el: {},           // track name → HTMLAudioElement, created on first use
@@ -174,6 +226,13 @@ function disarmAudio() {
 // iOS while the intro plays fine. So every track is primed here, silently,
 // while we do have a gesture to spend.
 function unlockTracks() {
+  // The effect needs the same per-element blessing as the music.
+  const s = sfxEl();
+  if (s && s.paused) {
+    s.volume = 0;
+    const p = s.play();
+    if (p) p.then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
+  }
   for (const name of Object.keys(TRACKS)) {
     const a = trackEl(name);
     if (!a || !a.paused) continue;
@@ -266,6 +325,7 @@ function mountMuteButtons() {
 function connect(code) {
   app.code = code;
   app.closingOnPurpose = false;
+  app.seenSeq = null;
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(`${proto}//${location.host}/ws`);
   url.searchParams.set("code", code);
@@ -308,6 +368,7 @@ function handle(msg) {
     case "state":
       app.view = msg;
       if (msg.pending) app.windowEndsAt = performance.now() + msg.pending.remainingMs;
+      playNewEvents(msg); // before render(), so a starting flash defers the modal
       render();
       break;
     case "private":
@@ -386,6 +447,8 @@ function render() {
 
 function renderLobby(v) {
   $("lobby-code").textContent = v.code;
+  renderAvatarPicker(v);
+
   const list = $("lobby-players");
   list.replaceChildren(...v.seats.map((s) => {
     const li = document.createElement("li");
@@ -393,7 +456,7 @@ function renderLobby(v) {
     dot.className = "dot" + (s.connected ? "" : " off");
     const nm = document.createElement("span");
     nm.textContent = s.name + (s.id === app.me ? " (you)" : "");
-    li.append(dot, nm);
+    li.append(avatarChip(s), dot, nm);
     if (s.host) {
       const tag = document.createElement("span");
       tag.className = "tag";
@@ -412,10 +475,65 @@ function renderLobby(v) {
     : "Waiting for the host to deal…";
 }
 
+// A picked portrait stops being a choice — greyed and disabled, your own
+// included, which you leave by picking another. Picking at all is optional.
+function renderAvatarPicker(v) {
+  const box = $("avatar-picker");
+  box.hidden = avatars.ids.length === 0;
+  if (box.hidden) return;
+
+  const heldBy = new Map(v.seats.filter((s) => s.avatar).map((s) => [s.avatar, s]));
+
+  $("avatar-grid").replaceChildren(...avatars.ids.map((id) => {
+    const holder = heldBy.get(id);
+    const mine = holder && holder.id === app.me;
+    const label = avatarLabel(id);
+
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "avatar-pick" + (mine ? " mine" : holder ? " taken" : "");
+    b.disabled = Boolean(holder);
+    b.setAttribute("aria-pressed", String(Boolean(mine)));
+    b.setAttribute("aria-label", mine ? `${label}, yours`
+      : holder ? `${label}, taken by ${holder.name}`
+      : `Play as ${label}`);
+
+    const img = document.createElement("img");
+    img.className = "avatar-art";
+    img.src = avatarURL(id);
+    img.alt = "";
+    img.decoding = "async";
+
+    const cap = document.createElement("span");
+    cap.className = "avatar-cap";
+    cap.textContent = mine ? "You" : holder ? holder.name : label;
+
+    b.append(img, cap);
+    if (!holder) b.onclick = () => send({ type: "avatar", avatar: id });
+    return b;
+  }));
+}
+
+// The portrait at name size, beside a player in the lobby and at the table.
+function avatarChip(seat) {
+  const el = document.createElement("span");
+  el.className = "avatar-chip";
+  if (!seat.avatar) {
+    el.textContent = "🐱";
+    return el;
+  }
+  const img = document.createElement("img");
+  img.src = avatarURL(seat.avatar);
+  img.alt = "";
+  img.decoding = "async";
+  el.append(img);
+  return el;
+}
+
 function renderTable(v) {
   $("table-code").textContent = v.code;
-  $("deck-count").textContent = `${v.deckCount} left`;
 
+  renderDeck(v);
   renderTurnBanner(v);
   renderSeats(v);
   renderDiscard(v);
@@ -424,6 +542,18 @@ function renderTable(v) {
   renderNopeBar(v);
   renderLog(v);
   renderPrompts(v);
+}
+
+// The odds of the next draw being a Kitten — arithmetic on two public numbers.
+function renderDeck(v) {
+  $("deck-count").textContent = `${v.deckCount} left`;
+
+  const kittens = v.kittensLeft || 0;
+  const pct = v.deckCount > 0 ? Math.round((kittens / v.deckCount) * 100) : 0;
+  const risk = $("deck-risk");
+  risk.textContent = v.phase === "game_over" ? "" : `💥 ${pct}%`;
+  risk.title = `${kittens} Exploding Kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards`;
+  risk.classList.toggle("hot", pct >= 25);
 }
 
 function renderTurnBanner(v) {
@@ -441,6 +571,7 @@ function renderSeats(v) {
   $("seats").replaceChildren(...v.seats.map((s) => {
     const div = document.createElement("div");
     div.className = "seat";
+    div.dataset.seat = s.id; // where an explosion goes off
     div.classList.toggle("current", s.current);
     div.classList.toggle("dead", !s.alive);
     if (app.awaitingTarget && s.alive && s.id !== app.me) {
@@ -451,7 +582,7 @@ function renderSeats(v) {
     nm.className = "seat-name";
     const dot = document.createElement("i");
     dot.className = "dot" + (s.connected ? "" : " off");
-    nm.append(dot, document.createTextNode(s.name + (s.id === app.me ? " (you)" : "")));
+    nm.append(avatarChip(s), dot, document.createTextNode(s.name + (s.id === app.me ? " (you)" : "")));
     const meta = document.createElement("div");
     meta.className = "seat-meta";
     meta.textContent = s.alive ? `${s.handCount} cards` : "exploded";
@@ -470,13 +601,36 @@ function renderHand(v) {
   // Drop selections for cards we no longer hold (stolen, given, noped away).
   const held = new Set(v.me.hand.map((c) => c.id));
   for (const id of [...app.selected]) if (!held.has(id)) app.selected.delete(id);
+  for (const id of [...app.peeked]) if (!held.has(id)) app.peeked.delete(id);
 
   $("hand").replaceChildren(...v.me.hand.map((c) => {
+    // While the hand is covered, the first tap turns a card over and the next
+    // one picks it, so a glance over your shoulder gets nothing.
+    if (app.coverHand && !app.peeked.has(c.id)) {
+      const back = backEl();
+      back.onclick = () => { app.peeked.add(c.id); app.flipping = c.id; render(); };
+      return back;
+    }
     const el = cardEl(c);
     el.classList.toggle("selected", app.selected.has(c.id));
+    if (app.flipping === c.id) el.classList.add("flipping");
     el.onclick = () => toggleSelect(c.id);
     return el;
   }));
+  app.flipping = 0;
+
+  const btn = $("hand-cover");
+  btn.hidden = !v.me.alive || v.me.hand.length === 0;
+  btn.textContent = app.coverHand ? "👀 Show hand" : "🙈 Hide hand";
+  btn.setAttribute("aria-pressed", String(app.coverHand));
+}
+
+function toggleCoverHand() {
+  app.coverHand = !app.coverHand;
+  app.peeked.clear();
+  app.selected.clear();
+  app.awaitingTarget = false;
+  render();
 }
 
 function renderActions(v) {
@@ -572,7 +726,12 @@ function renderLog(v) {
 
 // renderPrompts opens the modal a phase demands, and closes one that no longer
 // applies (an action can be noped out from under you).
+//
+// Modals wait for a flash to finish rather than opening underneath it; runCinema
+// calls back here once the screen is clear.
 function renderPrompts(v) {
+  if (cinema.playing) return;
+
   if (v.me.mustPlace && app.modal !== "place") {
     openPlaceModal(v);
   } else if (v.me.mustGive && app.modal !== "give") {
@@ -583,6 +742,99 @@ function renderPrompts(v) {
              (app.modal === "give" && !v.me.mustGive)) {
     closeModal();
   }
+}
+
+// ────────────────────────────────────────────────────────── cinematics
+
+// Read off the shared log, so every player sees the same bang at the same point.
+// Must match the CSS animation delays.
+const CINEMA_MS = { exploded: 1600, defused: 1300, eliminated: 1400 };
+
+const cinema = { queue: [], playing: false, played: false };
+
+// The bang and the skull go off over the seat they belong to; the defuse is the
+// whole table's news, so it plays in the middle.
+function cinematicFor(e) {
+  const who = nameOf(e.actorId);
+  switch (e.kind) {
+    case "exploded":
+      return { kind: "exploded", glyph: "💥", text: `${who} drew an Exploding Kitten!`, seat: e.actorId };
+    case "defused":
+      if (e.text) return null; // the reinsertion, which has its own modal
+      return { kind: "defused", glyph: "✂️", text: `${who} defused it` };
+    case "eliminated":
+      return { kind: "eliminated", glyph: "☠️", text: `${who} ${who === "You" ? "are" : "is"} out`, seat: e.actorId };
+    default:
+      return null;
+  }
+}
+
+function playNewEvents(v) {
+  const log = v.log || [];
+  const newest = log.reduce((max, e) => Math.max(max, e.seq || 0), 0);
+  if (app.seenSeq === null) {
+    app.seenSeq = newest; // first state of this connection: catch up in silence
+    return;
+  }
+  const fresh = log.filter((e) => (e.seq || 0) > app.seenSeq);
+  app.seenSeq = Math.max(app.seenSeq, newest);
+
+  for (const e of fresh) {
+    if (e.kind === "drew") playDrawSfx();
+    const item = cinematicFor(e);
+    if (item) cinema.queue.push(item);
+  }
+  // Never build a backlog nobody is waiting for.
+  if (cinema.queue.length > 3) cinema.queue.splice(0, cinema.queue.length - 3);
+  runCinema();
+}
+
+// Lays the flash over a seat's own box. A seat scrolled out of the row is
+// brought into view first, otherwise the bang goes off where nobody can see it.
+function anchorToSeat(flash, seatId) {
+  if (!seatId) return;
+  const seat = document.querySelector(`[data-seat="${seatId}"]`);
+  if (!seat) return;
+  seat.scrollIntoView({ behavior: "instant", inline: "center", block: "nearest" });
+  const r = seat.getBoundingClientRect();
+  if (!r.width) return;
+  flash.classList.add("at-seat");
+  flash.style.left = `${r.left}px`;
+  flash.style.top = `${r.top}px`;
+  flash.style.width = `${r.width}px`;
+  flash.style.height = `${r.height}px`;
+}
+
+function runCinema() {
+  if (cinema.playing) return;
+  const box = $("cinema");
+  const item = cinema.queue.shift();
+  if (!item) {
+    box.hidden = true;
+    box.replaceChildren();
+    if (cinema.played) {
+      cinema.played = false;
+      if (app.view && app.view.started) renderPrompts(app.view);
+    }
+    return;
+  }
+  cinema.playing = true;
+  cinema.played = true;
+
+  const flash = document.createElement("div");
+  flash.className = `flash ${item.kind}`;
+  anchorToSeat(flash, item.seat);
+  const glyph = document.createElement("span");
+  glyph.className = "flash-glyph";
+  glyph.textContent = item.glyph;
+  const text = document.createElement("p");
+  text.className = "flash-text";
+  text.textContent = item.text;
+  flash.append(glyph, text);
+
+  box.replaceChildren(flash);
+  box.hidden = false;
+  setTimeout(() => { cinema.playing = false; runCinema(); }, CINEMA_MS[item.kind]);
 }
 
 // ────────────────────────────────────────────────────────── selection
@@ -767,6 +1019,15 @@ function cardEl(card, { static: isStatic = false } = {}) {
   return el;
 }
 
+// A card seen from the back: the box art, same as the draw pile.
+function backEl() {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "card hidden-face";
+  el.setAttribute("aria-label", "Face-down card — tap to look");
+  return el;
+}
+
 function glyphEl(card) {
   const g = document.createElement("span");
   g.className = "glyph";
@@ -868,15 +1129,24 @@ $("copy-link").onclick = async () => {
   }
 };
 
+$("hand-cover").onclick = toggleCoverHand;
 $("log-toggle").onclick = () => { $("log-panel").hidden = false; };
 $("log-close").onclick = () => { $("log-panel").hidden = true; };
 $("target-cancel").onclick = () => { app.awaitingTarget = false; render(); };
 
+const showRules = (on) => { $("rules-panel").hidden = !on; };
+$("rules-lobby").onclick = () => showRules(true);
+$("rules-table").onclick = () => showRules(true);
+$("rules-close").onclick = () => showRules(false);
+
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && app.awaitingTarget) { app.awaitingTarget = false; render(); }
+  if (e.key !== "Escape") return;
+  if (!$("rules-panel").hidden) showRules(false);
+  else if (app.awaitingTarget) { app.awaitingTarget = false; render(); }
 });
 
 mountMuteButtons();
+loadAvatars();
 armAudio();  // must be installed before the first play() attempt below
 syncSound(); // the title screen is already up, so this starts the intro
 

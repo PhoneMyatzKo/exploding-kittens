@@ -18,6 +18,7 @@ import (
 
 	"boardgame/kittens/internal/game"
 	"boardgame/kittens/internal/view"
+	"boardgame/kittens/static"
 )
 
 const (
@@ -42,6 +43,7 @@ type ClientMsg struct {
 	CardIDs  []int  `json:"cardIds"`
 	TargetID string `json:"targetId"`
 	Index    int    `json:"index"`
+	Avatar   string `json:"avatar"`
 }
 
 var (
@@ -49,11 +51,15 @@ var (
 	ErrInProgress  = errors.New("that game has already started")
 	ErrNotHost     = errors.New("only the host can start the game")
 	ErrUnknownRoom = errors.New("no room with that code")
+	ErrAvatarTaken = errors.New("somebody already picked that cat")
+	ErrNoAvatar    = errors.New("no such cat")
 )
 
 type member struct {
-	ID        string
-	Name      string
+	ID   string
+	Name string
+	// Avatar belongs to the seat, so it survives a reconnect.
+	Avatar    string
 	Token     string
 	Conn      Sender
 	Connected bool
@@ -72,6 +78,7 @@ type Room struct {
 	seq     int
 	state   *game.State
 	logbuf  []view.Entry
+	logSeq  int
 	rng     *rand.Rand
 
 	// Nope window bookkeeping.
@@ -298,6 +305,10 @@ func (r *Room) handleMsg(c cmdMsg) {
 		r.handleReturnToLobby(m)
 		return
 	}
+	if c.msg.Type == "avatar" {
+		r.handleAvatar(m, c.msg.Avatar)
+		return
+	}
 	if r.state == nil {
 		r.sendErr(m, "the game hasn't started yet")
 		return
@@ -348,6 +359,30 @@ func (r *Room) handleStart(m *member) {
 	r.appendLog(view.Entry{Kind: "started"})
 	r.appendLog(view.Entry{Kind: "turn", ActorID: s.CurrentID()})
 	r.rearmTimers()
+	r.broadcast()
+}
+
+// handleAvatar records a player's portrait: one per table, lobby only.
+func (r *Room) handleAvatar(m *member, id string) {
+	if r.state != nil {
+		r.sendErr(m, "you can only pick a cat in the lobby")
+		return
+	}
+	if !static.HasAvatar(id) {
+		r.sendErr(m, ErrNoAvatar.Error())
+		return
+	}
+	if m.Avatar == id {
+		return
+	}
+	for _, mm := range r.members {
+		if mm != m && mm.Avatar == id {
+			r.sendErr(m, ErrAvatarTaken.Error())
+			r.sendTo(m) // their picker is out of date
+			return
+		}
+	}
+	m.Avatar = id
 	r.broadcast()
 }
 
@@ -508,7 +543,7 @@ func (r *Room) actForAbsentPlayer() {
 func (r *Room) memberships() []view.Membership {
 	out := make([]view.Membership, 0, len(r.members))
 	for _, m := range r.members {
-		out = append(out, view.Membership{ID: m.ID, Name: m.Name, Connected: m.Connected, Host: m.Host})
+		out = append(out, view.Membership{ID: m.ID, Name: m.Name, Avatar: m.Avatar, Connected: m.Connected, Host: m.Host})
 	}
 	return out
 }
@@ -569,7 +604,11 @@ func (r *Room) sendErr(m *member, msg string) {
 	m.Conn.Send(b)
 }
 
+// appendLog stamps the entry with the next sequence number. It keeps counting
+// across rounds, so a client's high-water mark never points at a replayed event.
 func (r *Room) appendLog(e view.Entry) {
+	r.logSeq++
+	e.Seq = r.logSeq
 	r.logbuf = append(r.logbuf, e)
 	if len(r.logbuf) > logLimit {
 		r.logbuf = r.logbuf[len(r.logbuf)-logLimit:]

@@ -111,6 +111,40 @@ func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 	}
 }
 
+// The odds readout is only honest if the count tracks the deck, so check it at
+// the deal and after an elimination has taken a Kitten out of the game.
+func TestKittensLeftTracksTheDeck(t *testing.T) {
+	gs, ms := seats(4)
+	rng := rand.New(rand.NewSource(3))
+	s, err := game.NewGame(gs, rng)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := For("ABCD", ms, s, "p0", 0, nil).KittensLeft; got != 3 {
+		t.Fatalf("kittensLeft at the deal = %d, want players-1 = 3", got)
+	}
+
+	for step := 0; step < 400 && s.Phase != game.PhaseGameOver; step++ {
+		if _, err := game.Apply(s, anyLegalMove(s, rng)); err != nil {
+			t.Fatal(err)
+		}
+		v := For("ABCD", ms, s, "p0", 0, nil)
+		dead := 0
+		for _, p := range s.Players {
+			if !p.Alive {
+				dead++
+			}
+		}
+		if want := 3 - dead; v.KittensLeft != want {
+			t.Fatalf("step %d: kittensLeft = %d with %d eliminated, want %d",
+				step, v.KittensLeft, dead, want)
+		}
+		if v.KittensLeft > v.DeckCount && s.PendingKitten == nil {
+			t.Fatalf("step %d: %d kittens in a %d card deck", step, v.KittensLeft, v.DeckCount)
+		}
+	}
+}
+
 // anyLegalMove mirrors the engine test's random driver, kept local so the two
 // packages stay independent.
 func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {

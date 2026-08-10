@@ -13,14 +13,18 @@ import "boardgame/kittens/internal/game"
 type Membership struct {
 	ID        string
 	Name      string
+	Avatar    string
 	Connected bool
 	Host      bool
 }
 
 // Seat is one player as seen by everybody.
 type Seat struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Avatar is the portrait's id, empty until the player picks one. Public on
+	// purpose: the lobby greys out the ones already taken.
+	Avatar    string `json:"avatar,omitempty"`
 	HandCount int    `json:"handCount"`
 	Alive     bool   `json:"alive"`
 	Connected bool   `json:"connected"`
@@ -59,6 +63,9 @@ type Me struct {
 
 // Entry is one line of the shared play-by-play.
 type Entry struct {
+	// Seq counts up for the life of the room, so a client can tell a new event
+	// from one it has already animated. Zero on private events.
+	Seq      int         `json:"seq,omitempty"`
 	Kind     string      `json:"kind"`
 	ActorID  string      `json:"actorId,omitempty"`
 	TargetID string      `json:"targetId,omitempty"`
@@ -77,6 +84,7 @@ type View struct {
 	Me    Me     `json:"me"`
 
 	DeckCount      int        `json:"deckCount"`
+	KittensLeft    int        `json:"kittensLeft"`
 	DiscardTop     *game.Card `json:"discardTop,omitempty"`
 	CurrentID      string     `json:"currentId,omitempty"`
 	TurnsRemaining int        `json:"turnsRemaining"`
@@ -90,7 +98,7 @@ type View struct {
 func Lobby(code string, members []Membership, viewerID string) *View {
 	v := &View{Type: "state", Code: code, Phase: string(game.PhaseLobby), Log: []Entry{}}
 	for _, m := range members {
-		v.Seats = append(v.Seats, Seat{ID: m.ID, Name: m.Name, Alive: true, Connected: m.Connected, Host: m.Host})
+		v.Seats = append(v.Seats, Seat{ID: m.ID, Name: m.Name, Avatar: m.Avatar, Alive: true, Connected: m.Connected, Host: m.Host})
 		if m.ID == viewerID {
 			v.Me = Me{ID: m.ID, Alive: true, Host: m.Host, Hand: []game.Card{}}
 		}
@@ -106,6 +114,7 @@ func For(code string, members []Membership, s *game.State, viewerID string, rema
 		Started:        true,
 		Phase:          string(s.Phase),
 		DeckCount:      s.DeckSize(),
+		KittensLeft:    s.KittensInDeck(),
 		DiscardTop:     s.DiscardTop(),
 		TurnsRemaining: s.TurnsRemaining,
 		WinnerID:       s.WinnerID,
@@ -129,6 +138,7 @@ func For(code string, members []Membership, s *game.State, viewerID string, rema
 		v.Seats = append(v.Seats, Seat{
 			ID:        p.ID,
 			Name:      p.Name,
+			Avatar:    m.Avatar,
 			HandCount: len(p.Hand),
 			Alive:     p.Alive,
 			Connected: m.Connected,

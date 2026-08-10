@@ -90,11 +90,61 @@ internal/room     one goroutine per table; owns all mutable state
 internal/view     redaction: turns the game into a per-player payload
 internal/game     the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
-static/           card scans (/cards) and the intro theme (/audio), embedded
+static/           card scans (/cards), portraits (/avatars), music (/audio)
 ```
 
 Cards without a scan in `static/src/images` fall back to the emoji glyph in
 `web/app.js`, so the art set can stay incomplete without anything breaking.
+
+## Portraits
+
+Everyone picks a cat in the lobby, from the PNGs in `static/src/avatars`. Those
+files are the whole catalogue: the client asks `GET /api/avatars` for the list
+and turns each id into both a label and an image URL (`ninja-nala` → "Ninja
+Nala", `/avatars/ninja-nala.png`), so adding a character is one file and a
+rebuild, with no list to keep in step.
+
+One portrait per table. A picked one goes grey and its button is disabled — for
+the player holding it as much as for everybody else, so the only move the grid
+offers you is a different cat. The room enforces that too, and refuses an id it
+does not serve, since a portrait is public and a hand-written socket message
+should not be able to leave a broken image on four other screens.
+
+Picking is optional: skip it and you keep a placeholder chip, and the host can
+still deal.
+
+## Explosions, defuses, odds
+
+Drawing a Kitten sets off a flash on every device: the bang and the skull go off
+over the seat they belong to, while the defuse plays in the middle of the screen
+as the whole table's news. They are driven off the shared log
+rather than a message of their own, so everyone sees the same beat at the same
+point in the story. Each log entry carries a `seq`, and a client only animates
+entries past its own high-water mark; a reconnecting player primes that mark from
+the log it is handed, which is what stops a refresh replaying a round of
+explosions. Modals hold off until the flash is done — the defuse prompt is a
+consequence of the bang, not something to answer over the top of it.
+
+Under the draw pile is the chance the next card is a Kitten (`kittensLeft /
+deckCount`). Both numbers are public — setup buries one fewer Kitten than there
+are players, Kittens never sit in a hand, and eliminations are announced — so
+this is arithmetic any table can do, and no more than they could work out for
+themselves. It climbs as the deck thins and drops when a player takes a Kitten
+out of the game with them.
+
+`?` in the topbar and **How to play** in the lobby open the rules.
+
+## Cards and the deck back
+
+Cards are 3:4, sized off `--card-w`, and both the draw pile and a face-down card
+in your own hand wear `static/src/images/background.jpeg` cropped to that ratio.
+The pile's "Draw" label rides on a scrim tight to the bottom edge so it does not
+sit over the wordmark.
+
+**Hide hand** turns your own cards face-down for playing next to somebody nosy.
+The first tap on a covered card flips it over, the next one selects it, so a
+glance over your shoulder gets a card back. Covering clears whatever you had
+selected.
 
 ## Theme
 
@@ -131,6 +181,11 @@ Two tracks, both optional, both under `static/src/audio`:
 - `intro.mp3` — loops over the title and lobby screens, fades out on the deal.
 - `theme_song1.mp3` — plays once over the game-over screen, then stops.
 
+Plus `draw.mp3`, a quarter-second card flick played whenever anybody draws. It
+is an effect rather than music, and deliberately outside the mute toggle: that
+switch exists so five phones do not play the same track out of sync, which a
+single short flick is not.
+
 **Nothing plays during a turn, on purpose.** The format is one phone per player,
 so a continuous bed is really five copies of the same track drifting out of sync
 in one room — worse than silence. Music is confined to the moments when every
@@ -142,7 +197,8 @@ state is remembered per browser under `ek:muted`. Browsers will not start audio
 before the page has been interacted with, so a rejected `play()` arms a one-shot
 gesture listener and retries rather than giving up.
 
-`static.go` embeds by extension (`src/images/*.jpg`, `src/audio/*.mp3`) so that
+`static.go` embeds by extension (`src/images/*.jpg`, `src/avatars/*.png`,
+`src/audio/*.mp3`) so that
 working files sitting next to the assets — a rules PDF, a 46 MB download a clip
 was cut from — never end up in the binary.
 

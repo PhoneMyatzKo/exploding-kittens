@@ -36,6 +36,22 @@ func (s *State) AwaitingGiftFrom() string {
 // DeckSize is the number of cards left to draw.
 func (s *State) DeckSize() int { return len(s.Draw) }
 
+// KittensInDeck counts the Exploding Kittens left to draw. Not a leak: it is
+// players-1 less the eliminations, which any real table can work out. One being
+// reinserted counts too, since it is on its way back in.
+func (s *State) KittensInDeck() int {
+	n := 0
+	for _, c := range s.Draw {
+		if c.Type == ExplodingKitten {
+			n++
+		}
+	}
+	if s.PendingKitten != nil {
+		n++
+	}
+	return n
+}
+
 // DiscardTop is the visible top of the discard pile, or nil when it is empty.
 func (s *State) DiscardTop() *Card {
 	if len(s.Discard) == 0 {

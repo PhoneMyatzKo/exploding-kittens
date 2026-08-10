@@ -24,8 +24,16 @@ func New(mgr *room.Manager) http.Handler {
 	// worth caching hard — it is by far the heaviest thing we serve.
 	mux.Handle("GET /cards/", http.StripPrefix("/cards/",
 		immutable(http.FileServer(http.FS(static.CardArt())))))
+	mux.Handle("GET /avatars/", http.StripPrefix("/avatars/",
+		immutable(http.FileServer(http.FS(static.Avatars())))))
 	mux.Handle("GET /audio/", http.StripPrefix("/audio/",
 		immutable(http.FileServer(http.FS(static.Audio())))))
+
+	// The portrait catalogue. The lobby builds its picker from this, so the
+	// embedded files stay the only place the set is written down.
+	mux.HandleFunc("GET /api/avatars", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string][]string{"avatars": static.AvatarIDs()})
+	})
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		rm := mgr.Create()
