@@ -184,6 +184,24 @@ input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 .card .glyph { font-size: clamp(24px, 8vw, 34px); line-height: 1; }
 .card .label { font-size: 10px; font-weight: 700; line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+
+/* Cards with scanned art: the photo fills the face and the label rides on a
+   scrim along the bottom, so the two never fight for the same pixels. */
+.card.has-art {
+  position: relative; overflow: hidden;
+  padding: 0; justify-content: flex-end; gap: 0;
+}
+.card.has-art .art {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover;
+  /* The scans keep a white paper border; nudging past it hides the edge. */
+  transform: scale(1.04);
+}
+.card.has-art .label {
+  position: relative; align-self: stretch;
+  padding: 10px 3px 3px;
+  background: linear-gradient(to top, rgba(0,0,0,.88) 40%, transparent);
+}
 .card.static { cursor: default; box-shadow: none; }
 .card.selected { transform: translateY(-14px); box-shadow: 0 0 0 3px var(--warn), 0 10px 20px rgba(0,0,0,.5); }
 .hand .card:hover:not(.selected) { transform: translateY(-6px); }

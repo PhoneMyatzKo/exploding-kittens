@@ -13,6 +13,20 @@ const GLYPHS = {
   "cat-potato": "🥔", "cat-beard": "🧔",
 };
 
+// Scanned card faces, served from /cards. Slugs missing here fall back to the
+// emoji glyph above, so partial art is fine.
+const ART = {
+  exploding: "Exploding-Kitten-Alien.jpg",
+  defuse: "Defuse-Via-3AM-Flatulence.jpg",
+  nope: "Nope-A-Jackanope-Bounds-into-the-Room.jpg",
+  attack: "Attack-Bear-o-Dactyl.jpg",
+  skip: "Skip-Commandeer-a-Bunnyraptor.jpg",
+  favor: "Favor-Fall-So-Deeply-in-Love.jpg",
+  "cat-beard": "Beard-Cat.jpg",
+};
+
+const artURL = (slug) => (ART[slug] ? `/cards/${encodeURIComponent(ART[slug])}` : "");
+
 const app = {
   ws: null,
   view: null,          // latest server state
@@ -491,14 +505,35 @@ function cardEl(card, { static: isStatic = false } = {}) {
   el.dataset.id = card.id;
   if (!isStatic) el.type = "button";
 
-  const g = document.createElement("span");
-  g.className = "glyph";
-  g.textContent = GLYPHS[card.slug] || "🐱";
   const l = document.createElement("span");
   l.className = "label";
   l.textContent = card.name;
-  el.append(g, l);
+
+  const src = artURL(card.slug);
+  if (src) {
+    // The art carries the card's own title, but it is unreadable at hand size,
+    // so the label stays on top as a legible strip.
+    const img = document.createElement("img");
+    img.className = "art";
+    img.src = src;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    // A missing or broken file must not leave a blank card.
+    img.onerror = () => { img.remove(); el.classList.remove("has-art"); el.prepend(glyphEl(card)); };
+    el.classList.add("has-art");
+    el.append(img, l);
+  } else {
+    el.append(glyphEl(card), l);
+  }
   return el;
+}
+
+function glyphEl(card) {
+  const g = document.createElement("span");
+  g.className = "glyph";
+  g.textContent = GLYPHS[card.slug] || "🐱";
+  return g;
 }
 
 function nameOf(id) {

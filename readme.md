@@ -90,7 +90,11 @@ internal/room     one goroutine per table; owns all mutable state
 internal/view     redaction: turns the game into a per-player payload
 internal/game     the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
+static/           scanned card faces, served from /cards, also embedded
 ```
+
+Cards without a scan in `static/src/images` fall back to the emoji glyph in
+`web/app.js`, so the art set can stay incomplete without anything breaking.
 
 Two ideas carry most of the weight:
 

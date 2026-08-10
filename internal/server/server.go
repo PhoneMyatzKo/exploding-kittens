@@ -10,6 +10,7 @@ import (
 
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/ws"
+	"boardgame/kittens/static"
 	"boardgame/kittens/web"
 )
 
@@ -18,6 +19,11 @@ func New(mgr *room.Manager) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", noCache(http.FileServer(http.FS(web.Assets))))
+
+	// Card art is immutable once built into the binary, so unlike the client it
+	// is worth caching hard — it is by far the heaviest thing we serve.
+	mux.Handle("GET /cards/", http.StripPrefix("/cards/",
+		immutable(http.FileServer(http.FS(static.CardArt())))))
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		rm := mgr.Create()
@@ -52,6 +58,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func noCache(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		h.ServeHTTP(w, r)
+	})
+}
+
+// immutable marks a response as safe to keep forever, for assets that only ever
+// change alongside the binary serving them.
+func immutable(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		h.ServeHTTP(w, r)
 	})
 }
