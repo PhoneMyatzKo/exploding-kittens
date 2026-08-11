@@ -68,22 +68,29 @@
     <span id="turn-banner" class="turn-banner"></span>
     <span id="sound-table"></span>
     <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
-    <button id="log-toggle" class="btn ghost small">Log</button>
   </header>
 
   <div id="seats" class="seats"></div>
 
-  <div class="center">
-    <div class="deck-stack">
-      <button id="deck" class="deck" type="button">
-        <span class="deck-strip">
-          <span class="deck-label">Draw</span>
-          <span id="deck-count" class="deck-count"></span>
-        </span>
-      </button>
-      <p id="deck-risk" class="deck-risk"></p>
+  <!-- Table and log sit side by side once there's width; stacked on a phone. -->
+  <div class="table-body">
+    <div class="center">
+      <div class="deck-stack">
+        <button id="deck" class="deck" type="button">
+          <span class="deck-strip">
+            <span class="deck-label">Draw</span>
+            <span id="deck-count" class="deck-count"></span>
+          </span>
+        </button>
+        <p id="deck-risk" class="deck-risk"></p>
+      </div>
+      <div id="discard" class="discard"></div>
     </div>
-    <div id="discard" class="discard"></div>
+
+    <aside class="log-panel">
+      <div class="log-head"><strong>Play by play</strong></div>
+      <ol id="log" class="log" aria-live="polite"></ol>
+    </aside>
   </div>
 
   <div id="target-row" class="target-row" hidden>
@@ -100,14 +107,6 @@
       <span id="hint" class="hint"></span>
     </div>
   </footer>
-
-  <aside id="log-panel" class="log-panel" hidden>
-    <div class="log-head">
-      <strong>Play by play</strong>
-      <button id="log-close" class="btn ghost small">Close</button>
-    </div>
-    <ol id="log" class="log"></ol>
-  </aside>
 </section>
 
 <!-- ───────────────────────── rules ───────────────────────── -->

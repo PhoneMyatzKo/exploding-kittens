@@ -413,17 +413,35 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* ───────────────────────────── log ───────────────────────────── */
 
+/* Always on, like a chat window: a short strip beneath the table on a phone, a
+   column beside it once there is width to spare. */
+.table-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
 .log-panel {
-  position: fixed; inset: 0 0 0 auto; z-index: 45;
-  width: min(340px, 90vw); background: var(--panel);
-  border-left: 1px solid var(--line);
+  flex: none; height: 104px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
   display: flex; flex-direction: column;
 }
-.log-head { display: flex; align-items: center; justify-content: space-between; padding: 14px; border-bottom: 1px solid var(--line); }
-.log { flex: 1; margin: 0; padding: 12px 14px; list-style: none; overflow-y: auto; font-size: 13px; display: grid; gap: 7px; align-content: start; }
+.log-head {
+  padding: 5px 14px; border-bottom: 1px solid var(--line);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted);
+}
+.log-head strong { font: inherit; }
+.log {
+  flex: 1; margin: 0; padding: 8px 14px; list-style: none;
+  overflow-y: auto; font-size: 13px;
+  display: grid; gap: 6px; align-content: start;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
 .log li { color: var(--muted); }
 .log li b { color: var(--ink); }
 .log li.big { color: var(--ink); font-weight: 600; }
+/* Things that happened to you personally, and are otherwise only a toast. */
+.log li.mine { color: var(--ink); }
+.log li.fresh { animation: log-in .22s ease both; }
+@keyframes log-in { from { opacity: 0; transform: translateY(5px); } }
 
 /* ───────────────────────────── rules ───────────────────────────── */
 
@@ -524,6 +542,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .flash, .flash-glyph, .flash::before { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
   .flash { animation: none; }
   .flash.exploded::before { animation: none; opacity: .8; }
+  .log li.fresh { animation: none; }
 }
 
 /* ───────────────────────── modal & toasts ───────────────────────── */
@@ -575,4 +594,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .seats { justify-content: center; }
   .hand { justify-content: center; }
   .actions { justify-content: center; }
+
+  /* Enough room to sit the log alongside the table instead of under it, where
+     it can be tall enough to read a whole exchange at a glance. */
+  .table-body { flex-direction: row; }
+  .log-panel {
+    width: 300px; height: auto;
+    border-top: 0; border-left: 1px solid var(--line);
+  }
 }

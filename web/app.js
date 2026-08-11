@@ -68,6 +68,8 @@ const app = {
   modal: null,         // which modal is open, so render() doesn't reopen it
   windowEndsAt: 0,     // performance.now() deadline for the Nope countdown
   seenSeq: null,       // highest log seq animated; null until the first state
+  logSeq: null,        // highest log seq written into the chat box
+  privateQueue: [],    // private notes waiting for the state they belong to
   reconnectDelay: 500,
   closingOnPurpose: false,
 };
@@ -326,6 +328,8 @@ function connect(code) {
   app.code = code;
   app.closingOnPurpose = false;
   app.seenSeq = null;
+  app.logSeq = null;
+  app.privateQueue.length = 0;
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(`${proto}//${location.host}/ws`);
   url.searchParams.set("code", code);
@@ -384,9 +388,14 @@ function handle(msg) {
   }
 }
 
-// Private events carry information only this player is entitled to see.
+// Private events carry information only this player is entitled to see. Each one
+// gets a toast for the moment and a log line for the record — a toast is gone in
+// three seconds, and what you drew is exactly the sort of thing you want to
+// scroll back for later.
 function handlePrivate(e) {
   const card = e.cards && e.cards[0];
+  let note = "";
+
   switch (e.kind) {
     case "future":
       openModal("future", {
@@ -395,21 +404,29 @@ function handlePrivate(e) {
         cards: e.cards,
         ok: "Got it",
       });
-      break;
+      note = `🔮 You saw: ${(e.cards || []).map((c) => c.name).join(", ")}`;
+      logPrivate(note);
+      return; // the modal is the announcement; no toast on top of it
     case "drew":
-      if (card) toast(`You drew ${card.name}`);
+      if (!card) return;
+      note = `You drew ${card.name}`;
       break;
     case "stole":
-      toast(e.actorId === app.me
+      note = e.actorId === app.me
         ? `You stole ${card.name} from ${nameOf(e.targetId)}`
-        : `${nameOf(e.actorId)} stole your ${card.name}`);
+        : `${nameOf(e.actorId)} stole your ${card.name}`;
       break;
     case "gave":
-      toast(e.actorId === app.me
+      note = e.actorId === app.me
         ? `You gave away ${card.name}`
-        : `${nameOf(e.actorId)} gave you ${card.name}`);
+        : `${nameOf(e.actorId)} gave you ${card.name}`;
       break;
+    default:
+      return;
   }
+
+  toast(note);
+  logPrivate(note);
 }
 
 // ────────────────────────────────────────────────────────── screens
@@ -718,10 +735,76 @@ function tickCountdown() {
   step();
 }
 
+// The log is a chat window, so it is appended to rather than rebuilt: that is
+// what lets a player scroll back through the round without the next card played
+// yanking them to the bottom, and what keeps private lines (which the server
+// never replays) from being wiped on the next state.
+//
+// A full rebuild is still right in three cases, all detectable from the seq
+// numbers: the first state of a connection, a new round (only a fresh buffer is
+// ever headed by "started"), and a gap meaning we missed events while away.
 function renderLog(v) {
-  const lines = v.log.map(logLine).filter(Boolean);
-  $("log").replaceChildren(...lines);
-  $("log").scrollTop = $("log").scrollHeight;
+  const box = $("log");
+  const entries = v.log || [];
+  const newest = entries.length ? entries[entries.length - 1].seq : 0;
+
+  if (app.logSeq === null || newest < app.logSeq ||
+      (entries.length && entries[0].seq > app.logSeq + 1)) {
+    box.replaceChildren(...entries.map(logLine).filter(Boolean));
+    app.logSeq = newest;
+    app.privateQueue.length = 0; // belongs to a round we just replaced
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+
+  const fresh = entries.filter((e) => e.seq > app.logSeq);
+  if (!fresh.length) {
+    flushPrivateLog();
+    return;
+  }
+  app.logSeq = newest;
+
+  if (fresh.some((e) => e.kind === "started")) {
+    box.replaceChildren(...entries.map(logLine).filter(Boolean));
+    app.privateQueue.length = 0;
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+  appendLogLines(fresh.map(logLine).filter(Boolean));
+  flushPrivateLog();
+}
+
+// appendLogLines follows the newest line only when the reader was already at the
+// bottom; someone reading back through the history is left where they were.
+function appendLogLines(lines) {
+  if (!lines.length) return;
+  const box = $("log");
+  const pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+  for (const li of lines) {
+    li.classList.add("fresh");
+    box.append(li);
+  }
+  if (pinned) box.scrollTop = box.scrollHeight;
+}
+
+// Private events never reach the shared log, so they are written in from here.
+// They are queued rather than appended on arrival: the server sends them just
+// ahead of the state broadcast that carries the public half of the same move, so
+// appending immediately would file them above lines that happened first.
+function logPrivate(text) {
+  app.privateQueue.push(text);
+}
+
+function flushPrivateLog() {
+  if (!app.privateQueue.length) return;
+  const lines = app.privateQueue.map((text) => {
+    const li = document.createElement("li");
+    li.className = "mine";
+    li.textContent = text;
+    return li;
+  });
+  app.privateQueue.length = 0;
+  appendLogLines(lines);
 }
 
 // renderPrompts opens the modal a phase demands, and closes one that no longer
@@ -1058,13 +1141,24 @@ function logLine(e) {
       break;
     case "noped":     text = `${who} said NOPE`; break;
     case "cancelled": text = `✖ ${cards} was noped away`; break;
-    case "drew":      text = `${who} drew a card`; break;
+    // Events you were part of arrive privately too, naming the actual card, so
+    // the vaguer public line would only duplicate them.
+    case "drew":
+      if (e.actorId === app.me) return null;
+      text = `${who} drew a card`;
+      break;
     case "shuffled":  text = `${who} shuffled the deck`; break;
     case "exploded":  text = `💥 ${who} drew an Exploding Kitten!`; big = true; break;
     case "defused":   text = e.text ? `${who} ${e.text}` : `${who} defused it`; break;
     case "eliminated":text = `☠️ ${who} ${who === "You" ? "are" : "is"} out`; big = true; break;
-    case "stole":     text = `${who} stole a card from ${nameOf(e.targetId)}`; break;
-    case "gave":      text = `${who} gave a card to ${nameOf(e.targetId)}`; break;
+    case "stole":
+      if (e.actorId === app.me || e.targetId === app.me) return null;
+      text = `${who} stole a card from ${nameOf(e.targetId)}`;
+      break;
+    case "gave":
+      if (e.actorId === app.me || e.targetId === app.me) return null;
+      text = `${who} gave a card to ${nameOf(e.targetId)}`;
+      break;
     case "game_over": text = `🏆 ${who} wins!`; big = true; break;
     case "auto":      text = `${who} was away, so the table moved on`; break;
     default:          return null;
@@ -1130,8 +1224,6 @@ $("copy-link").onclick = async () => {
 };
 
 $("hand-cover").onclick = toggleCoverHand;
-$("log-toggle").onclick = () => { $("log-panel").hidden = false; };
-$("log-close").onclick = () => { $("log-panel").hidden = true; };
 $("target-cancel").onclick = () => { app.awaitingTarget = false; render(); };
 
 const showRules = (on) => { $("rules-panel").hidden = !on; };
