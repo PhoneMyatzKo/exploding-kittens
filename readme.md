@@ -90,11 +90,32 @@ internal/room     one goroutine per table; owns all mutable state
 internal/view     redaction: turns the game into a per-player payload
 internal/game     the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
-static/           card scans (/cards), portraits (/avatars), music (/audio)
+static/           card scans (/cards), portraits (/avatars), music (/audio),
+                  effects footage (/video)
 ```
 
-Cards without a scan in `static/src/images` fall back to the emoji glyph in
-`web/app.js`, so the art set can stay incomplete without anything breaking.
+## Card faces
+
+`static/src/images` holds one directory per card — `defuse/`, `nope/`,
+`see-the-future/` — and each directory is that card's set of printed faces.
+There are far more faces than copies: eighteen Defuses are printed, six are in
+the deck, so **every deal samples which ones the table sees**. Two Defuses in
+one hand are two different Defuses, the way the printed deck works.
+
+The files are the catalogue. Dropping another scan into `defuse/` widens the pool
+the next deal draws from, with no code to change. The mapping from card slug to
+directory is `cardArtDirs` in `static/static.go`; the five cat cards are printed
+one design each and are named individually in `cardArtFiles` beside it.
+
+The server picks, not the client, and the choice rides along on the card itself
+(`Card.Art`, set in `fullDeck`) — so it travels between deck, hand and discard,
+and everybody at the table is looking at the same picture. Cards with no face
+available fall back to the emoji glyph in `web/app.js`, so the art set can stay
+incomplete without anything breaking.
+
+Loose `.jpg` files at the top of `static/src/images` are cards from expansions
+this engine does not implement. They are deliberately left out of the binary —
+only `background.jpeg`, the card back, is served from that level.
 
 ## Portraits
 
@@ -181,10 +202,34 @@ Two tracks, both optional, both under `static/src/audio`:
 - `intro.mp3` — loops over the title and lobby screens, fades out on the deal.
 - `theme_song1.mp3` — plays once over the game-over screen, then stops.
 
-Plus `draw.mp3`, a quarter-second card flick played whenever anybody draws. It
-is an effect rather than music, and deliberately outside the mute toggle: that
-switch exists so five phones do not play the same track out of sync, which a
-single short flick is not.
+Plus three effects, all deliberately outside the mute toggle: that switch exists
+so five phones do not play the same *track* out of sync, which a short reaction
+noise is not.
+
+- `draw.mp3` — a card flick, whenever anybody draws.
+- `nope.mp3` — fires the moment a Nope lands.
+- `explosion.mp3` — the bang, fired with its picture rather than with the event,
+  so sound and footage stay together if a cinematic is already playing.
+
+## Effects
+
+`static/src/video/explosion.mp4` plays over the whole table when somebody draws
+an Exploding Kitten. It was shot on black, so the client blends it with `screen`
+and only the fire lands — the table still reads through it.
+
+Two things about that are load-bearing and easy to break:
+
+- The `<video>` is mounted on `<body>`, not inside `#cinema`. `mix-blend-mode`
+  only blends against its own stacking context, and `#cinema` is one, so nested
+  there the plate paints its black over everything.
+- `CINEMA_MS.exploded` in `web/app.js` and the `.flash.exploded` /`.flash-vfx`
+  animation delays in `web/style.css` have to agree, or the flash clears while
+  the fireball is still burning.
+
+The clip is optional like the audio: a codec the browser refuses takes the video
+element out and leaves the bang and the 💥 glyph doing the work. Under
+`prefers-reduced-motion` it never plays at all. The 4 MB plate the clip was cut
+from lives beside the kitten scans and is not embedded.
 
 **Nothing plays during a turn, on purpose.** The format is one phone per player,
 so a continuous bed is really five copies of the same track drifting out of sync
@@ -197,10 +242,14 @@ state is remembered per browser under `ek:muted`. Browsers will not start audio
 before the page has been interacted with, so a rejected `play()` arms a one-shot
 gesture listener and retries rather than giving up.
 
-`static.go` embeds by extension (`src/images/*.jpg`, `src/avatars/*.png`,
-`src/audio/*.mp3`) so that
-working files sitting next to the assets — a rules PDF, a 46 MB download a clip
-was cut from — never end up in the binary.
+`static.go` embeds a named list of patterns rather than whole directories, so
+that working files sitting next to the assets — a rules PDF, a 46 MB download a
+clip was cut from, a 4 MB explosion plate — never end up in the binary. The card
+directories are listed one per line and have to stay in step with `cardArtDirs`;
+scans for expansions this engine does not implement are five megabytes nothing
+can ask for, so they are left out. Because each `go:embed` pattern must match at
+least one file, a renamed directory fails the build instead of quietly costing
+those cards their art.
 
 ## After a game
 

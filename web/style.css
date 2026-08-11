@@ -39,8 +39,11 @@
   --warn: var(--gold);
 
   --radius: 14px;
-  /* Cards are 3:4, matching the printed deck and the art we cut for the back. */
-  --card-w: clamp(96px, 27vw, 138px);
+  /* Cards are 3:4, matching the printed deck and the art we cut for the back.
+     Sized to show off the scans: every card carries a different one, so the face
+     is worth looking at rather than just identifying. The vw term still governs
+     on a phone, where the hand has to fit across the screen. */
+  --card-w: clamp(112px, 31vw, 164px);
   --card-h: calc(var(--card-w) * 4 / 3);
 }
 
@@ -543,9 +546,28 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .flash.at-seat .flash-text { display: none; }
 .flash.at-seat::before { width: min(52vw, 240px); }
 
+/* Real footage of a blast, laid over the whole table and under the glyph. The
+   plate was shot on black, so screen blending throws the black away and leaves
+   only the fire — no rectangle, no edges, and the table still reads through it.
+   Fades out just before the flash does; JS drops the element after that.
+
+   Mounted on <body> rather than inside .cinema, and that is load-bearing:
+   mix-blend-mode only blends against the backdrop within its own stacking
+   context, and .cinema is one (fixed + z-index). Nested there, the plate has
+   nothing to blend with and paints its black over the whole table. */
+.flash-vfx {
+  position: fixed; inset: 0; z-index: 74;   /* just under .cinema's glyph */
+  width: 100%; height: 100%;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: vfx-out .4s ease 1.8s both;
+}
+@keyframes vfx-out { to { opacity: 0; } }
+
 /* The explosion flares gold behind the glyph; the other two are the same beat
    without the noise. Delays must match CINEMA_MS in app.js. */
-.flash.exploded { animation-delay: 0s, 1.2s; }
+.flash.exploded { animation-delay: 0s, 1.8s; }
 .flash.exploded .flash-glyph { animation: boom .5s ease-out both; }
 .flash.exploded::before {
   content: ""; position: absolute; width: min(90vw, 460px); aspect-ratio: 1;
@@ -577,6 +599,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .flash, .flash-glyph, .flash::before { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
   .flash { animation: none; }
   .flash.exploded::before { animation: none; opacity: .8; }
+  /* A full-screen fireball is exactly what this preference is asking us not to
+     do. The bang still sounds; the glyph still says what happened. */
+  .flash-vfx { display: none; }
   .log li.fresh { animation: none; }
 }
 

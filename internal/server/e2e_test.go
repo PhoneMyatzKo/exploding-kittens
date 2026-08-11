@@ -299,6 +299,66 @@ func TestReconnectOverWebSocket(t *testing.T) {
 	}
 }
 
+// Card faces are chosen by the server and travel in the redacted view, so this
+// checks the whole chain at once: the catalogue built from the embedded scans,
+// the per-copy pick at deal time, the JSON field, and the route the browser will
+// actually put in an <img src>.
+func TestDealtCardsCarryServableArt(t *testing.T) {
+	base, _ := newTestServer(t)
+	code := createRoom(t, base)
+
+	a := dial(t, base, code, "Ann", "")
+	a.await(t, 0)
+	b := dial(t, base, code, "Bob", "")
+	b.await(t, 0)
+	settle(t, []*player{a, b})
+	act(t, []*player{a, b}, 0, room.ClientMsg{Type: "start"})
+
+	v, _ := a.snapshot()
+	if len(v.Me.Hand) != 8 {
+		t.Fatalf("hand = %d cards, want 8", len(v.Me.Hand))
+	}
+
+	// Copies of one kind must differ, which is the whole point — a hand holding
+	// two Skips should show two different ways of skipping.
+	byKind := map[string]map[string]bool{}
+	for _, c := range v.Me.Hand {
+		if c.Art == "" {
+			t.Errorf("%s (card %d) was dealt with no art", c.Name, c.ID)
+			continue
+		}
+		resp, err := http.Get(base + "/cards/" + c.Art)
+		if err != nil {
+			t.Fatalf("GET art for %s: %v", c.Name, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: /cards/%s -> %d, want 200", c.Name, c.Art, resp.StatusCode)
+		}
+		if byKind[c.Slug] == nil {
+			byKind[c.Slug] = map[string]bool{}
+		}
+		// Cats are printed one design each, so only the deep pools are checked.
+		if byKind[c.Slug][c.Art] && !strings.HasPrefix(c.Slug, "cat-") {
+			t.Errorf("two %s in one hand share the face %q", c.Name, c.Art)
+		}
+		byKind[c.Slug][c.Art] = true
+	}
+
+	// And both players have to be looking at the same picture for the same card:
+	// a Defuse played face up is one physical card, whoever is holding it.
+	bv, _ := b.snapshot()
+	mine := map[int]string{}
+	for _, c := range v.Me.Hand {
+		mine[c.ID] = c.Art
+	}
+	for _, c := range bv.Me.Hand {
+		if art, ok := mine[c.ID]; ok && art != c.Art {
+			t.Errorf("card %d looks like %q to Ann and %q to Bob", c.ID, art, c.Art)
+		}
+	}
+}
+
 // ------------------------------------------------------------------ driving
 
 // settle waits until every client can see the whole table. Without it, a message

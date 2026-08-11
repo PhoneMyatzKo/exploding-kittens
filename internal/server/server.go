@@ -17,6 +17,12 @@ import (
 
 // New returns the complete handler for the game server.
 func New(mgr *room.Manager) http.Handler {
+	// Card faces are drawn per deal out of the scans that shipped in this binary,
+	// so the engine has to be told what is on offer before the first deck is
+	// built. Here rather than in main so that anything standing the stack up —
+	// the end-to-end test included — deals the same decks the binary does.
+	game.SetCardArt(static.CardArtVariants())
+
 	mux := http.NewServeMux()
 
 	mux.Handle("/", noCache(http.FileServer(http.FS(web.Assets))))
@@ -29,6 +35,8 @@ func New(mgr *room.Manager) http.Handler {
 		immutable(http.FileServer(http.FS(static.Avatars())))))
 	mux.Handle("GET /audio/", http.StripPrefix("/audio/",
 		immutable(http.FileServer(http.FS(static.Audio())))))
+	mux.Handle("GET /video/", http.StripPrefix("/video/",
+		immutable(http.FileServer(http.FS(static.Video())))))
 
 	// The portrait catalogue. The lobby builds its picker from this, so the
 	// embedded files stay the only place the set is written down.

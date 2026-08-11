@@ -13,24 +13,15 @@ const GLYPHS = {
   "cat-potato": "🥔", "cat-beard": "🧔",
 };
 
-// Scanned card faces, served from /cards. Slugs missing here fall back to the
-// emoji glyph above, so partial art is fine.
-// Where a scan exists in more than one edition, the one matching the rules this
-// engine implements wins: See the Future peeks three cards, so the Original
-// Edition goat is right and the Second Expansion pig (five cards) is not.
-const ART = {
-  exploding: "Exploding-Kitten-Alien.jpg",
-  defuse: "Defuse-Via-3AM-Flatulence.jpg",
-  nope: "Nope-A-Jackanope-Bounds-into-the-Room.jpg",
-  attack: "Attack-Bear-o-Dactyl.jpg",
-  skip: "Skip-Commandeer-a-Bunnyraptor.jpg",
-  favor: "Favor-Fall-So-Deeply-in-Love.jpg",
-  shuffle: "Shuffle-A-Kraken-Emerges-and-Hes-Super-Upset.jpg",
-  future: "See-the-Future-Ask-the-All-Seeing-Goat-Wizard.jpg",
-  "cat-beard": "Beard-Cat.jpg",
-};
-
-const artURL = (slug) => (ART[slug] ? `/cards/${encodeURIComponent(ART[slug])}` : "");
+// Every card arrives carrying the face the server drew for it, out of the scans
+// in the binary — so the six Defuses in a game are six different Defuses, the
+// way the printed deck works. The server picks rather than the client because
+// everyone at the table has to be looking at the same picture.
+//
+// A card with no art — nothing registered, or a slug whose directory went away —
+// falls back to the emoji glyph above, so partial art is fine.
+const artURL = (card) =>
+  card.art ? `/cards/${card.art.split("/").map(encodeURIComponent).join("/")}` : "";
 
 // ────────────────────────────────────────────────────────── avatars
 
@@ -119,29 +110,63 @@ const TRACKS = {
   theme: { src: "/audio/theme_song1.mp3", volume: 0.6, loop: false },
 };
 
-// The draw is a sound effect, not music, and deliberately outside the mute
-// toggle: that switch is about not having five phones playing the same track,
-// which a quarter-second card flick is not.
-const DRAW_SFX = { src: "/audio/draw.mp3", volume: 0.5 };
-const sfx = { el: null, broken: false };
+// Effects are not music, and deliberately outside the mute toggle: that switch
+// is about not having five phones playing the same track, which a card flick, a
+// bang or a shouted NOPE is not — those are the table reacting, and they are
+// short.
+//
+// Each is optional in the same way the tracks are: a file that fails to load
+// takes its own effect out and leaves the rest of the game alone.
+//
+// offset skips the dead air at the head of a clip, in seconds, so the sound
+// lands on the beat that triggered it instead of a third of a second later —
+// long enough to read as lag rather than as a card being drawn. The numbers are
+// where each file actually starts making noise, rounded down a hair so the
+// attack transient survives:
+//
+//   draw.mp3       silent to 0.32     explosion.mp3  silent to 0.05
+//   nope.mp3       silent to 0.06
+//
+// Re-cut a file and this is the line to revisit. What the onset is:
+//   ffmpeg -i f.mp3 -af silencedetect=noise=-40dB:d=0.03 -f null -
+const SFX = {
+  draw: { src: "/audio/draw.mp3", volume: 0.5, offset: 0.3 },
+  boom: { src: "/audio/explosion.mp3", volume: 0.8, offset: 0.03 },
+  nope: { src: "/audio/nope.mp3", volume: 0.9, offset: 0.04 },
+};
 
-function sfxEl() {
-  if (sfx.broken) return null;
-  if (!sfx.el) {
-    const a = new Audio(DRAW_SFX.src);
-    a.preload = "auto";
-    a.volume = DRAW_SFX.volume;
-    a.addEventListener("error", () => { sfx.broken = true; sfx.el = null; }, { once: true });
-    sfx.el = a;
-  }
-  return sfx.el;
+const sfx = {}; // name → HTMLAudioElement, created on first use; null once broken
+
+function sfxEl(name) {
+  if (name in sfx) return sfx[name];
+  const s = SFX[name];
+  if (!s) return null;
+  const a = new Audio(s.src);
+  a.preload = "auto";
+  a.volume = s.volume;
+  a.addEventListener("error", () => { sfx[name] = null; }, { once: true });
+  sfx[name] = a;
+  cueSfx(a, s.offset); // parked on the onset, ready for the first play
+  return a;
 }
 
-function playDrawSfx() {
-  const a = sfxEl();
+// Winds an effect back to where its sound starts. Seeking needs the metadata, and
+// an element built moments ago may not have it yet — assigning currentTime then
+// is either dropped on the floor or throws, depending on the engine, so it is
+// retried once the duration arrives. In practice unlockTracks() has primed every
+// element on the first tap, long before anything explodes.
+function cueSfx(a, offset) {
+  const at = offset || 0;
+  const seek = () => { try { a.currentTime = at; } catch { /* play from the head */ } };
+  if (a.readyState >= 1 /* HAVE_METADATA */) seek();
+  else a.addEventListener("loadedmetadata", seek, { once: true });
+}
+
+function playSfx(name) {
+  const a = sfxEl(name);
   if (!a) return;
-  a.currentTime = 0;
-  a.volume = DRAW_SFX.volume;
+  cueSfx(a, SFX[name].offset);
+  a.volume = SFX[name].volume;
   a.play().catch(() => armAudio());
 }
 
@@ -244,12 +269,14 @@ function disarmAudio() {
 // iOS while the intro plays fine. So every track is primed here, silently,
 // while we do have a gesture to spend.
 function unlockTracks() {
-  // The effect needs the same per-element blessing as the music.
-  const s = sfxEl();
-  if (s && s.paused) {
+  // The effects need the same per-element blessing as the music, and the bang in
+  // particular is fired from a socket message with no gesture in the stack.
+  for (const name of Object.keys(SFX)) {
+    const s = sfxEl(name);
+    if (!s || !s.paused) continue;
     s.volume = 0;
     const p = s.play();
-    if (p) p.then(() => { s.pause(); s.currentTime = 0; }).catch(() => {});
+    if (p) p.then(() => { s.pause(); cueSfx(s, SFX[name].offset); }).catch(() => {});
   }
   for (const name of Object.keys(TRACKS)) {
     const a = trackEl(name);
@@ -886,7 +913,25 @@ function renderPrompts(v) {
 
 // Read off the shared log, so every player sees the same bang at the same point.
 // Must match the CSS animation delays.
-const CINEMA_MS = { exploded: 1600, defused: 1300, eliminated: 1400 };
+//
+// The explosion runs longest because it has real footage behind it, and it is
+// the one beat in the game worth waiting through. Everything that would open a
+// modal waits for it — see renderPrompts.
+const CINEMA_MS = { exploded: 2200, defused: 1300, eliminated: 1400 };
+
+// The explosion plate, laid over the whole table. Muted and inline is what lets
+// it start without a gesture on iOS; the bang itself is a separate mp3, which is
+// also why a device that refuses the video still gets the noise.
+//
+// offset trims the head the same way the effects above do, except it is spent as
+// a media fragment on the URL — browsers honour #t= on a media element natively,
+// which beats waiting on readyState to seek. Zero because the clip was already
+// cut to the ignition: frame one is the flash, so there is nothing to skip.
+//
+// Anything spent here comes out of the clip's 2.6s, and the beat needs
+// CINEMA_MS.exploded (2.2s) of footage — so past ~0.4s the fire runs out before
+// the flash does.
+const BOOM_VFX = { src: "/video/explosion.mp4", offset: 0 };
 
 const cinema = { queue: [], playing: false, played: false };
 
@@ -918,7 +963,11 @@ function playNewEvents(v) {
   app.seenSeq = Math.max(app.seenSeq, newest);
 
   for (const e of fresh) {
-    if (e.kind === "drew") playDrawSfx();
+    // Sounds that belong to the moment the event landed. The bang is not one of
+    // them: it goes off with its picture, from runCinema, which may be a beat
+    // later if something is already playing.
+    if (e.kind === "drew") playSfx("draw");
+    if (e.kind === "noped") playSfx("nope");
     const item = cinematicFor(e);
     if (item) cinema.queue.push(item);
   }
@@ -950,6 +999,7 @@ function runCinema() {
   if (!item) {
     box.hidden = true;
     box.replaceChildren();
+    clearBoomVfx();
     if (cinema.played) {
       cinema.played = false;
       if (app.view && app.view.started) renderPrompts(app.view);
@@ -971,8 +1021,39 @@ function runCinema() {
   flash.append(glyph, text);
 
   box.replaceChildren(flash);
+  if (item.kind === "exploded") {
+    playSfx("boom");
+    playBoomVfx();
+  }
   box.hidden = false;
   setTimeout(() => { cinema.playing = false; runCinema(); }, CINEMA_MS[item.kind]);
+}
+
+// The plate goes on <body>, not into #cinema — see .flash-vfx in the stylesheet
+// for why that placement is what makes the blending work at all.
+//
+// Built fresh each time rather than rewound: a <video> that failed to decode
+// once stays broken, and this way the next bang gets a clean try.
+function playBoomVfx() {
+  clearBoomVfx();
+  const v = document.createElement("video");
+  v.className = "flash-vfx";
+  v.src = BOOM_VFX.offset ? `${BOOM_VFX.src}#t=${BOOM_VFX.offset}` : BOOM_VFX.src;
+  v.muted = true;
+  v.defaultMuted = true; // Safari reads this attribute, not the property
+  v.playsInline = true;
+  v.preload = "auto";
+  v.setAttribute("aria-hidden", "true");
+  // Never leave a black rectangle over the table: the plate is only additive
+  // because of how it blends, so a codec we cannot play must take itself out.
+  v.addEventListener("error", clearBoomVfx, { once: true });
+  document.body.append(v);
+  const p = v.play();
+  if (p) p.catch(clearBoomVfx);
+}
+
+function clearBoomVfx() {
+  for (const v of document.querySelectorAll(".flash-vfx")) v.remove();
 }
 
 // ────────────────────────────────────────────────────────── selection
@@ -1244,7 +1325,7 @@ function cardEl(card, { static: isStatic = false } = {}) {
   l.className = "label";
   l.textContent = card.name;
 
-  const src = artURL(card.slug);
+  const src = artURL(card);
   if (src) {
     // The art carries the card's own title, but it is unreadable at hand size,
     // so the label stays on top as a legible strip.

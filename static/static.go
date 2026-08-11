@@ -13,17 +13,39 @@ import (
 
 // Matched by extension rather than by directory so that working files living
 // alongside the assets do not silently end up in the binary — src/ has held a
-// 5 MB rules PDF and a 46 MB download of an audio source, neither of which is
-// served. Adding a new media type means adding its pattern here.
+// 5 MB rules PDF, a 46 MB download of an audio source and a 4 MB explosion plate
+// the served clip was cut from, none of which is served. Adding a new media type
+// means adding its pattern here.
 //
-// Each pattern must match at least one file or the build fails. That is a
-// feature: removing the last mp3 is meant to be a decision, not a surprise.
+// The card scans are named one directory at a time rather than with a wildcard
+// across src/images. Each directory is one card's set of printed faces, and most
+// of what sits in there is for cards this engine does not implement — the
+// Zombie, Imploding and Barking expansions all shipped their own, and taking
+// them along would be five megabytes of pictures nothing can ever ask for.
 //
-//go:embed src/images/*.jpg src/images/*.jpeg src/avatars/*.png src/audio/*.mp3
+// So the list below has to stay in step with cardArtDirs further down. Being
+// go:embed patterns, they earn their keep: each must match at least one file or
+// the build fails, which makes a renamed directory a compile error rather than a
+// deck of cards quietly wearing emoji.
+//
+// Only background.jpeg, the card back, is served from the top level — hence the
+// narrower .jpeg pattern beside the per-card .jpg ones.
+//
+//go:embed src/images/background.jpeg
+//go:embed src/images/explode/*.jpg
+//go:embed src/images/defuse/*.jpg
+//go:embed src/images/nope/*.jpg
+//go:embed src/images/attack/*.jpg
+//go:embed src/images/skip/*.jpg
+//go:embed src/images/favor/*.jpg
+//go:embed src/images/shuffle/*.jpg
+//go:embed src/images/see-the-future/*.jpg
+//go:embed src/images/cat-card/*.jpg
+//go:embed src/avatars/*.png src/audio/*.mp3 src/video/*.mp4
 var assets embed.FS
 
 // CardArt is the card-face image set, rooted so that a request for
-// "Beard-Cat.jpg" resolves without the src/images prefix.
+// "defuse/Defuse-Via-Crate.jpg" resolves without the src/images prefix.
 func CardArt() fs.FS { return sub("src/images") }
 
 // Avatars is the set of player portraits, rooted the same way.
@@ -32,6 +54,85 @@ func Avatars() fs.FS { return sub("src/avatars") }
 // Audio is the sound set, rooted the same way. It is expected to be sparse or
 // empty: the client treats a missing intro.mp3 as "play nothing".
 func Audio() fs.FS { return sub("src/audio") }
+
+// Video is the effects footage, rooted the same way. Optional in the same sense
+// as the audio: a missing explosion.mp4 costs the bang its picture, nothing else.
+func Video() fs.FS { return sub("src/video") }
+
+// cardArtDirs maps a card's slug — the identifier the engine and the client both
+// use — to the directory holding the faces printed for it.
+//
+// One card has many faces. The Original Edition prints eighteen different
+// Defuses and only four to six of them are in any one game, so which ones a
+// table sees is drawn per deal rather than pinned down here. Directories with no
+// slug against them are deliberately unserved: they hold cards from expansions
+// this engine does not implement.
+var cardArtDirs = map[string]string{
+	"exploding": "explode",
+	"defuse":    "defuse",
+	"nope":      "nope",
+	"attack":    "attack",
+	"skip":      "skip",
+	"favor":     "favor",
+	"shuffle":   "shuffle",
+	"future":    "see-the-future",
+}
+
+// cardArtFiles names the faces that come one to a card. The five cat cards are
+// printed in a single design each and share one directory, so there is nothing
+// to sample and the filename is the whole catalogue.
+var cardArtFiles = map[string]string{
+	"cat-taco":    "cat-card/Tacocat.jpg",
+	"cat-rainbow": "cat-card/Rainbow-Ralphing-Cat.jpg",
+	"cat-melon":   "cat-card/Cattermelon.jpg",
+	"cat-potato":  "cat-card/Hairy-Potato-Cat.jpg",
+	"cat-beard":   "cat-card/Beard-Cat.jpg",
+}
+
+// CardArtVariants lists the faces available for each card slug, as paths
+// relative to CardArt() — "defuse/Defuse-Via-Crate.jpg".
+//
+// The files are the catalogue, the same bargain AvatarIDs makes: dropping
+// another scan into defuse/ widens the pool the next deal draws from, with no
+// code to change. A slug whose directory is empty or gone is simply absent from
+// the result, which leaves those cards rendering as the client's fallback glyph
+// instead of failing the deal.
+func CardArtVariants() map[string][]string {
+	src := cardArtVariants()
+	out := make(map[string][]string, len(src))
+	for slug, files := range src {
+		out[slug] = append([]string(nil), files...)
+	}
+	return out
+}
+
+var cardArtVariants = sync.OnceValue(func() map[string][]string {
+	out := map[string][]string{}
+
+	for slug, dir := range cardArtDirs {
+		entries, err := fs.ReadDir(assets, "src/images/"+dir)
+		if err != nil {
+			continue // directory removed: those cards fall back to a glyph
+		}
+		var files []string
+		for _, e := range entries {
+			if name := e.Name(); strings.HasSuffix(name, ".jpg") {
+				files = append(files, dir+"/"+name)
+			}
+		}
+		if len(files) > 0 {
+			sort.Strings(files)
+			out[slug] = files
+		}
+	}
+
+	for slug, path := range cardArtFiles {
+		if _, err := fs.Stat(assets, "src/images/"+path); err == nil {
+			out[slug] = []string{path}
+		}
+	}
+	return out
+})
 
 // AvatarIDs lists the pickable portraits by basename — "ninja-nala" for
 // src/avatars/ninja-nala.png — in sorted order.

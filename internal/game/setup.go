@@ -37,7 +37,7 @@ func NewGame(seats []Seat, rng *rand.Rand) (*State, error) {
 		rng = rand.New(rand.NewSource(rand.Int63()))
 	}
 
-	deck := fullDeck()
+	deck := fullDeck(rng)
 	deck, kittens := extract(deck, ExplodingKitten)
 	deck, defuses := extract(deck, Defuse)
 	shuffle(deck, rng)
