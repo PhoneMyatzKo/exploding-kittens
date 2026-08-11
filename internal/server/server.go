@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 
+	"boardgame/kittens/internal/game"
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/ws"
 	"boardgame/kittens/static"
@@ -33,6 +34,20 @@ func New(mgr *room.Manager) http.Handler {
 	// embedded files stay the only place the set is written down.
 	mux.HandleFunc("GET /api/avatars", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string][]string{"avatars": static.AvatarIDs()})
+	})
+
+	// The kinds a Three of a Kind may demand. Served rather than duplicated in
+	// JavaScript so card names are written down in exactly one place.
+	mux.HandleFunc("GET /api/cards", func(w http.ResponseWriter, r *http.Request) {
+		type kind struct {
+			Name string `json:"name"`
+			Slug string `json:"slug"`
+		}
+		out := make([]kind, 0, len(game.DemandableTypes()))
+		for _, t := range game.DemandableTypes() {
+			out = append(out, kind{Name: t.String(), Slug: t.Slug()})
+		}
+		writeJSON(w, http.StatusOK, map[string][]kind{"demandable": out})
 	})
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {

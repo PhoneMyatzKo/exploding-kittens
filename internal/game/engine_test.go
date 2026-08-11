@@ -388,11 +388,180 @@ func TestMismatchedCatsRejected(t *testing.T) {
 	p0 := s.Players[0]
 
 	_, err := Apply(s, Action{Kind: ActPlay, PlayerID: "p0", CardIDs: []int{p0.Hand[0].ID, p0.Hand[1].ID}, TargetID: "p1"})
-	if err != ErrBadCatPair {
-		t.Errorf("err = %v, want ErrBadCatPair", err)
+	if err != ErrBadCatSet {
+		t.Errorf("err = %v, want ErrBadCatSet", err)
 	}
 	if len(p0.Hand) != 2 {
 		t.Error("a rejected pair must stay in hand")
+	}
+}
+
+// ------------------------------------------------------------- three of a kind
+
+// threeCats plays a trio of matching cats naming the given card.
+func threeCats(t *testing.T, s *State, named string) ([]Event, error) {
+	t.Helper()
+	p0 := s.Players[0]
+	return Apply(s, Action{
+		Kind: ActPlay, PlayerID: "p0",
+		CardIDs:  []int{p0.Hand[0].ID, p0.Hand[1].ID, p0.Hand[2].ID},
+		TargetID: "p1", Named: named,
+	})
+}
+
+func TestThreeOfAKindTakesTheNamedCard(t *testing.T) {
+	s := mkState([][]CardType{
+		{CatTaco, CatTaco, CatTaco},
+		{Skip, Defuse, Attack},
+	}, []CardType{Shuffle})
+
+	ev, err := threeCats(t, s, "defuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !s.Players[0].hasType(Defuse) {
+		t.Errorf("p0 hand = %v, want the demanded Defuse", typesOf(s.Players[0].Hand))
+	}
+	if s.Players[1].hasType(Defuse) {
+		t.Errorf("p1 hand = %v, want the Defuse handed over", typesOf(s.Players[1].Hand))
+	}
+	if len(s.Players[1].Hand) != 2 {
+		t.Errorf("p1 lost %d cards, want exactly 1", 3-len(s.Players[1].Hand))
+	}
+	if s.Current != 0 {
+		t.Error("a demand must not end the turn")
+	}
+	// All three cats are spent.
+	if countType(s.Discard, CatTaco) != 3 {
+		t.Errorf("discard = %v, want three Taco Cats spent", typesOf(s.Discard))
+	}
+
+	var demanded, stole bool
+	for _, e := range ev {
+		if e.Kind == EvDemanded && e.Text == "Defuse" {
+			demanded = true
+		}
+		if e.Kind == EvStole && e.Text == "Defuse" {
+			stole = true
+		}
+		// The whole table hears this, so nothing here may be private.
+		if (e.Kind == EvDemanded || e.Kind == EvStole) && e.OnlyFor != "" {
+			t.Errorf("%s event was private; the demand is public", e.Kind)
+		}
+	}
+	if !demanded || !stole {
+		t.Errorf("events = %+v, want a public demand and a public transfer", ev)
+	}
+}
+
+func TestThreeOfAKindMissesWhenTargetLacksTheCard(t *testing.T) {
+	s := mkState([][]CardType{
+		{CatTaco, CatTaco, CatTaco},
+		{Skip, Attack},
+	}, []CardType{Shuffle})
+
+	ev, err := threeCats(t, s, "defuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(s.Players[1].Hand) != 2 {
+		t.Errorf("p1 hand = %v, want it untouched", typesOf(s.Players[1].Hand))
+	}
+	if len(s.Players[0].Hand) != 0 {
+		t.Errorf("p0 hand = %v, want the three cats spent for nothing", typesOf(s.Players[0].Hand))
+	}
+	var missed bool
+	for _, e := range ev {
+		if e.Kind == EvMissed {
+			missed = true
+		}
+	}
+	if !missed {
+		t.Error("no missed event; the table must hear that the demand failed")
+	}
+}
+
+func TestThreeOfAKindNeedsANamedCard(t *testing.T) {
+	for _, named := range []string{"", "not-a-card"} {
+		s := mkState([][]CardType{{CatTaco, CatTaco, CatTaco}, {Defuse}}, []CardType{Shuffle})
+		if _, err := threeCats(t, s, named); err != ErrNoNamedCard {
+			t.Errorf("naming %q: err = %v, want ErrNoNamedCard", named, err)
+		}
+		if len(s.Players[0].Hand) != 3 {
+			t.Error("a rejected demand must leave the cats in hand")
+		}
+	}
+}
+
+func TestThreeMismatchedCatsRejected(t *testing.T) {
+	s := mkState([][]CardType{{CatTaco, CatTaco, CatBeard}, {Defuse}}, []CardType{Shuffle})
+	if _, err := threeCats(t, s, "defuse"); err != ErrBadCatSet {
+		t.Errorf("err = %v, want ErrBadCatSet", err)
+	}
+	if len(s.Players[0].Hand) != 3 {
+		t.Error("a rejected trio must stay in hand")
+	}
+}
+
+func TestThreeNonCatsRejected(t *testing.T) {
+	s := mkState([][]CardType{{Skip, Skip, Skip}, {Defuse}}, []CardType{Shuffle})
+	if _, err := threeCats(t, s, "defuse"); err != ErrBadCatSet {
+		t.Errorf("err = %v, want ErrBadCatSet — only cats form sets", err)
+	}
+}
+
+func TestFourCardsRejected(t *testing.T) {
+	s := mkState([][]CardType{{CatTaco, CatTaco, CatTaco, CatTaco}, {Defuse}}, []CardType{Shuffle})
+	p0 := s.Players[0]
+	_, err := Apply(s, Action{
+		Kind: ActPlay, PlayerID: "p0", TargetID: "p1", Named: "defuse",
+		CardIDs: []int{p0.Hand[0].ID, p0.Hand[1].ID, p0.Hand[2].ID, p0.Hand[3].ID},
+	})
+	if err != ErrNotPlayable {
+		t.Errorf("err = %v, want ErrNotPlayable", err)
+	}
+}
+
+func TestThreeOfAKindCanBeNoped(t *testing.T) {
+	s := mkState([][]CardType{
+		{CatTaco, CatTaco, CatTaco},
+		{Defuse, Nope},
+	}, []CardType{Shuffle})
+
+	if _, err := threeCats(t, s, "defuse"); err != nil {
+		t.Fatal(err)
+	}
+	if s.Phase != PhaseNope {
+		t.Fatalf("phase = %s, want a nope window", s.Phase)
+	}
+	mustApply(t, s, Action{Kind: ActNope, PlayerID: "p1"})
+
+	if !s.Players[1].hasType(Defuse) {
+		t.Error("the noped demand still took the Defuse")
+	}
+	if s.Current != 0 {
+		t.Error("p0 should still be on turn")
+	}
+}
+
+// A demand is public, so the named card must reach the view — but as a kind, not
+// as a specific card carrying an ID.
+func TestThreeOfAKindExposesTheNameNotACard(t *testing.T) {
+	s := mkState([][]CardType{
+		{CatTaco, CatTaco, CatTaco},
+		{Defuse, Nope},
+	}, []CardType{Shuffle})
+
+	if _, err := threeCats(t, s, "defuse"); err != nil {
+		t.Fatal(err)
+	}
+	if s.Pending == nil || !s.Pending.HasNamed {
+		t.Fatal("pending action did not record the named card")
+	}
+	if s.Pending.Named != Defuse {
+		t.Errorf("named = %s, want Defuse", s.Pending.Named)
 	}
 }
 
@@ -660,6 +829,13 @@ func randomMove(s *State, rng *rand.Rand) Action {
 	return Action{Kind: ActDraw, PlayerID: p.ID}
 }
 
+// someSlug names an arbitrary card for a demand, so the driver exercises both
+// hitting and missing.
+func someSlug(rng *rand.Rand) string {
+	all := []CardType{Defuse, Nope, Attack, Skip, Favor, Shuffle, SeeTheFuture, CatTaco}
+	return all[rng.Intn(len(all))].Slug()
+}
+
 func randomPlay(s *State, p *Player, rng *rand.Rand) (Action, bool) {
 	var singles []Card
 	cats := map[CardType][]Card{}
@@ -679,12 +855,21 @@ func randomPlay(s *State, p *Player, rng *rand.Rand) (Action, bool) {
 		}
 	}
 
-	for ct, group := range cats {
-		if len(group) >= 2 && len(others) > 0 {
-			_ = ct
-			target := others[rng.Intn(len(others))]
-			return Action{Kind: ActPlay, PlayerID: p.ID, CardIDs: []int{group[0].ID, group[1].ID}, TargetID: target.ID}, true
+	// Cat sets: play three when three are held, so the demand path gets the same
+	// invariant checking as everything else.
+	for _, group := range cats {
+		if len(group) < 2 || len(others) == 0 {
+			continue
 		}
+		target := others[rng.Intn(len(others))]
+		a := Action{Kind: ActPlay, PlayerID: p.ID, TargetID: target.ID}
+		if len(group) >= 3 && rng.Intn(2) == 0 {
+			a.CardIDs = []int{group[0].ID, group[1].ID, group[2].ID}
+			a.Named = someSlug(rng)
+		} else {
+			a.CardIDs = []int{group[0].ID, group[1].ID}
+		}
+		return a, true
 	}
 	if len(singles) == 0 {
 		return Action{}, false

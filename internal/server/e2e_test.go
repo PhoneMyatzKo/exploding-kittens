@@ -222,6 +222,7 @@ func TestFullGameOverWebSockets(t *testing.T) {
 		players[i] = dial(t, base, code, n, "")
 		players[i].await(t, 0)
 	}
+	settle(t, players)
 
 	act(t, players, 0, room.ClientMsg{Type: "start"})
 	for i, p := range players {
@@ -271,6 +272,7 @@ func TestReconnectOverWebSocket(t *testing.T) {
 	a.await(t, 0)
 	b := dial(t, base, code, "Bob", "")
 	b.await(t, 0)
+	settle(t, []*player{a, b})
 
 	act(t, []*player{a, b}, 0, room.ClientMsg{Type: "start"})
 	before, _ := a.snapshot()
@@ -298,6 +300,30 @@ func TestReconnectOverWebSocket(t *testing.T) {
 }
 
 // ------------------------------------------------------------------ driving
+
+// settle waits until every client can see the whole table. Without it, a message
+// count captured for act() can be satisfied by a join broadcast still in flight
+// rather than by the state the test actually triggered. Broadcasts are ordered
+// per connection, so once the last join is visible everywhere, nothing earlier
+// can still arrive.
+func settle(t *testing.T, players []*player) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		done := true
+		for _, p := range players {
+			if v, _ := p.snapshot(); v == nil || len(v.Seats) != len(players) {
+				done = false
+				break
+			}
+		}
+		if done {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("not every client saw all %d seats", len(players))
+}
 
 // act sends a message and waits until every client has observed the result, so
 // the next decision is never made from a stale view.
@@ -370,9 +396,17 @@ func pickPlay(v *view.View, rng *rand.Rand) (room.ClientMsg, bool) {
 			ids = append(ids, c.ID)
 		}
 	}
-	for _, pair := range cats {
-		if len(pair) >= 2 {
-			return room.ClientMsg{Type: "play", CardIDs: pair[:2], TargetID: target}, true
+	// Three matching cats demand a named card; two steal at random. Playing the
+	// trio when it is available is what gets the demand path exercised here.
+	for _, set := range cats {
+		if len(set) >= 3 {
+			return room.ClientMsg{
+				Type: "play", CardIDs: set[:3], TargetID: target,
+				Named: []string{"defuse", "nope", "skip"}[rng.Intn(3)],
+			}, true
+		}
+		if len(set) >= 2 {
+			return room.ClientMsg{Type: "play", CardIDs: set[:2], TargetID: target}, true
 		}
 	}
 	if len(slugs) == 0 {

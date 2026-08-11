@@ -41,7 +41,7 @@ func applyPlay(s *State, a Action) ([]Event, error) {
 	if p.ID != a.PlayerID {
 		return nil, ErrNotYourTurn
 	}
-	if len(a.CardIDs) == 0 || len(a.CardIDs) > 2 {
+	if len(a.CardIDs) == 0 || len(a.CardIDs) > 3 {
 		return nil, ErrNotPlayable
 	}
 
@@ -69,17 +69,29 @@ func applyPlay(s *State, a Action) ([]Event, error) {
 
 	pend := &PendingAction{ActorID: p.ID, Cards: cards, Passed: map[string]bool{}}
 
-	if len(cards) == 2 {
-		// The only legal two-card play in the base game is a matching cat pair.
-		if !cards[0].Type.IsCat() || cards[0].Type != cards[1].Type {
-			return nil, ErrBadCatPair
+	if len(cards) > 1 {
+		// Multi-card plays are matching cat sets: two steal at random, three let
+		// you name what you want.
+		if !matchingCats(cards) {
+			return nil, ErrBadCatSet
 		}
 		t := s.playerByID(a.TargetID)
 		if t == nil || !t.Alive || t.ID == p.ID {
 			return nil, ErrBadTarget
 		}
-		pend.Kind = PendCatPair
 		pend.TargetID = t.ID
+
+		if len(cards) == 2 {
+			pend.Kind = PendCatPair
+		} else {
+			named, ok := TypeFromSlug(a.Named)
+			if !ok {
+				return nil, ErrNoNamedCard
+			}
+			pend.Kind = PendCatTriple
+			pend.Named = named
+			pend.HasNamed = true
+		}
 	} else {
 		switch cards[0].Type {
 		case Skip:
@@ -113,6 +125,20 @@ func applyPlay(s *State, a Action) ([]Event, error) {
 
 	events := []Event{{Kind: EvPlayed, ActorID: p.ID, TargetID: pend.TargetID, Cards: cards}}
 	return append(events, s.settleWindow()...), nil
+}
+
+// matchingCats reports whether every card is a cat card of the same kind, which
+// is what makes a set playable.
+func matchingCats(cards []Card) bool {
+	if len(cards) < 2 || !cards[0].Type.IsCat() {
+		return false
+	}
+	for _, c := range cards[1:] {
+		if c.Type != cards[0].Type {
+			return false
+		}
+	}
+	return true
 }
 
 // discardFrom moves one card from a player's hand to the top of the discard pile.
@@ -270,6 +296,35 @@ func (s *State) resolvePending() []Event {
 			Event{Kind: EvStole, ActorID: actor.ID, TargetID: target.ID, Cards: []Card{stolen}, OnlyFor: actor.ID},
 			Event{Kind: EvStole, ActorID: actor.ID, TargetID: target.ID, Cards: []Card{stolen}, OnlyFor: target.ID},
 		)
+
+	case PendCatTriple:
+		// Unlike a pair, this is all public: the demand is made out loud and the
+		// table sees whether it was met. The card is named in Text rather than
+		// carried in Cards, so a specific card's identity still never travels to
+		// players who are not holding it.
+		events = append(events, Event{
+			Kind: EvDemanded, ActorID: pend.ActorID, TargetID: pend.TargetID,
+			Text: pend.Named.String(),
+		})
+
+		target := s.playerByID(pend.TargetID)
+		if target == nil || !target.Alive {
+			break
+		}
+		got, ok := target.findType(pend.Named)
+		if !ok {
+			events = append(events, Event{
+				Kind: EvMissed, ActorID: pend.ActorID, TargetID: pend.TargetID,
+				Text: pend.Named.String(),
+			})
+			break
+		}
+		hand, card, _ := removeCard(target.Hand, got.ID)
+		target.Hand = hand
+		actor.Hand = append(actor.Hand, card)
+		events = append(events, Event{
+			Kind: EvStole, ActorID: actor.ID, TargetID: target.ID, Text: card.Name,
+		})
 	}
 
 	return append(events, s.turnEvents()...)

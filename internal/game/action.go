@@ -19,9 +19,10 @@ const (
 type Action struct {
 	Kind     ActionKind
 	PlayerID string
-	CardIDs  []int  // ActPlay: one card, or two matching cats. ActNope/ActGiveCard: one.
-	TargetID string // ActPlay for Favor and cat pairs
+	CardIDs  []int  // ActPlay: one card, or two/three matching cats. ActNope/ActGiveCard: one.
+	TargetID string // ActPlay for Favor and cat sets
 	Index    int    // ActPlaceKitten: 0 = top of deck, len(Draw) = bottom
+	Named    string // ActPlay for a three-cat set: the slug of the card demanded
 }
 
 var (
@@ -30,7 +31,8 @@ var (
 	ErrNoSuchCard    = errors.New("you don't have that card")
 	ErrNotPlayable   = errors.New("that card can't be played on its own")
 	ErrBadTarget     = errors.New("pick a different player")
-	ErrBadCatPair    = errors.New("cat cards must be played as a matching pair")
+	ErrBadCatSet     = errors.New("cat cards must be played as a matching pair or trio")
+	ErrNoNamedCard   = errors.New("name the card you want")
 	ErrDead          = errors.New("you have been eliminated")
 	ErrGameOver      = errors.New("the game is over")
 	ErrNoNopeCard    = errors.New("you don't have a Nope card")
@@ -49,7 +51,9 @@ const (
 	EvExploded   EventKind = "exploded"    // an Exploding Kitten came up
 	EvDefused    EventKind = "defused"     //
 	EvEliminated EventKind = "eliminated"  //
-	EvStole      EventKind = "stole"       // cat pair took a card
+	EvStole      EventKind = "stole"       // cat set took a card
+	EvDemanded   EventKind = "demanded"    // a Three of a Kind named a card
+	EvMissed     EventKind = "missed"      // ...and the target didn't have one
 	EvGave       EventKind = "gave"        // Favor handed a card over
 	EvFuture     EventKind = "future"      // private: the top three cards
 	EvTurn       EventKind = "turn"        // the active player changed

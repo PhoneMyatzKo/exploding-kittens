@@ -56,19 +56,19 @@ Rules implemented (Original Edition, 56 cards):
 | Favor ×4 | Pick a player; **they** choose which card to hand you. |
 | Shuffle ×4 | Shuffle the draw pile. |
 | See the Future ×5 | Privately look at the top three cards. |
-| Cat cards ×20 | Worthless alone. Two matching cats steal a random card from a player you choose. |
+| Cat cards ×20 | Worthless alone. **Two** matching cats steal a random card from a player you choose. **Three** matching cats let you name the card you want — they hand it over if they have one, and the whole table hears what you asked for. |
 
 Setup follows the printed rules: kittens and defuses come out of the deck,
 everyone gets 7 cards plus a guaranteed Defuse, the leftover Defuses go back in,
 and exactly **one fewer kitten than there are players** is shuffled in. Last
 player standing wins.
 
-Not included: the Imploding Kittens expansion, and the advanced cat combos
-(three-of-a-kind and five-different).
+Not included: the Imploding Kittens expansion, and the five-different-cards combo
+that takes a card from the discard pile.
 
 ### Nope windows
 
-When someone plays an action card it sits on the table for 7 seconds while
+When someone plays an action card it sits on the table for 20 seconds while
 anyone holding a Nope can cancel it. Play a second Nope on top and the action is
 back on. The window only opens if somebody actually holds a Nope, so the game
 doesn't stall for no reason.

@@ -209,6 +209,8 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .avatar-chip img { width: 100%; height: 100%; display: block; }
 .seat .avatar-chip { width: 24px; height: 24px; font-size: 12px; }
 
+.lobby-actions { display: flex; gap: 8px; justify-content: center; }
+
 .lobby-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .lobby-players li {
   display: flex; align-items: center; gap: 10px;
@@ -336,8 +338,11 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 .card.static { cursor: default; box-shadow: none; }
 .card.selected { transform: translateY(-16px); box-shadow: 0 0 0 3px var(--warn), 0 12px 24px rgba(0,0,0,.5); }
-.hand .card:hover:not(.selected) { transform: translateY(-8px) rotate(-1deg); }
-.hand .card:active { transform: translateY(-4px) scale(.98); }
+.hand .card:hover:not(.selected):not(.blocked) { transform: translateY(-8px) rotate(-1deg); }
+.hand .card:active:not(.blocked) { transform: translateY(-4px) scale(.98); }
+
+/* Can't join the current selection: still tappable, so the hint can say why. */
+.card.blocked { opacity: .34; cursor: not-allowed; }
 
 /* Cards dealt or drawn slide up into the hand instead of appearing. */
 .hand .card { animation: deal-in .22s ease both; }
@@ -387,6 +392,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 .actions { display: flex; align-items: center; gap: 12px; padding: 4px 14px 0; }
 .hint { color: var(--muted); font-size: 13px; }
+.hint.warn { color: var(--gold); font-weight: 600; }
 
 .target-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -423,12 +429,24 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   border-top: 1px solid var(--line);
   display: flex; flex-direction: column;
 }
+/* The whole header is the collapse control, so the hit area is generous on a
+   phone rather than a lone caret glyph. */
 .log-head {
-  padding: 5px 14px; border-bottom: 1px solid var(--line);
-  font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--muted);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 6px 14px; border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel); color: var(--muted);
+  font: inherit; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .1em;
+  cursor: pointer; text-align: left;
 }
+.log-head:hover { color: var(--ink); }
 .log-head strong { font: inherit; }
+.caret { font-size: 13px; line-height: 1; transition: transform .15s ease; }
+
+/* Collapsed: the header alone, so the table gets the room back. */
+.log-panel.collapsed { height: auto; }
+.log-panel.collapsed .log { display: none; }
 .log {
   flex: 1; margin: 0; padding: 8px 14px; list-style: none;
   overflow-y: auto; font-size: 13px;
@@ -442,6 +460,23 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .log li.mine { color: var(--ink); }
 .log li.fresh { animation: log-in .22s ease both; }
 @keyframes log-in { from { opacity: 0; transform: translateY(5px); } }
+
+/* ─────────────────────── demand a card (three of a kind) ─────────────────── */
+
+.demand-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px; width: 100%;
+}
+.demand-pick {
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink);
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 6px; cursor: pointer;
+  display: grid; gap: 5px; justify-items: center; text-align: center;
+  transition: border-color .12s ease, transform .08s ease;
+}
+.demand-pick:hover { border-color: var(--accent); }
+.demand-pick:active { transform: translateY(1px); }
+.demand-glyph { font-size: 22px; line-height: 1; }
 
 /* ───────────────────────────── rules ───────────────────────────── */
 
@@ -571,9 +606,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* Sat in the empty band between the seats and the deck, so a burst of toasts
    never buries the turn banner or the other players' card counts. */
+/* Below the modal layer (60) on purpose: a prompt you have to answer must not be
+   covered by a passing notice, and every toast is now also written to the log, so
+   nothing is lost by letting it hide behind one. */
 .toasts {
   position: fixed; top: 120px; left: 50%; transform: translateX(-50%);
-  z-index: 70; display: grid; gap: 8px; pointer-events: none;
+  z-index: 58; display: grid; gap: 8px; pointer-events: none;
   max-width: min(92vw, 420px);
 }
 .toast {
@@ -602,4 +640,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
     width: 300px; height: auto;
     border-top: 0; border-left: 1px solid var(--line);
   }
+  /* Collapsed sideways, the header would be a 300px empty bar, so shrink to a
+     narrow spine instead and stand the label on its end. */
+  .log-panel.collapsed { width: auto; }
+  .log-panel.collapsed .log-head {
+    height: 100%; flex-direction: column; justify-content: flex-start;
+    gap: 12px; padding: 12px 8px; border-bottom: 0;
+  }
+  .log-panel.collapsed .log-head strong { writing-mode: vertical-rl; }
 }

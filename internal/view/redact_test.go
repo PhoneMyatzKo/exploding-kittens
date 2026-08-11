@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 
 	"boardgame/kittens/internal/game"
@@ -46,7 +47,7 @@ func TestViewNeverLeaksHiddenCards(t *testing.T) {
 			}
 
 			for _, m := range ms {
-				v := For("ABCD", ms, s, m.ID, 0, nil)
+				v := For("ABCD", ms, s, m.ID, Countdown{}, nil)
 				blob, err := json.Marshal(v)
 				if err != nil {
 					t.Fatal(err)
@@ -96,7 +97,7 @@ func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := For("ABCD", ms, s, "p1", 0, nil)
+	v := For("ABCD", ms, s, "p1", Countdown{}, nil)
 
 	if len(v.Me.Hand) != 8 {
 		t.Errorf("own hand = %d cards, want 8", len(v.Me.Hand))
@@ -120,7 +121,7 @@ func TestKittensLeftTracksTheDeck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := For("ABCD", ms, s, "p0", 0, nil).KittensLeft; got != 3 {
+	if got := For("ABCD", ms, s, "p0", Countdown{}, nil).KittensLeft; got != 3 {
 		t.Fatalf("kittensLeft at the deal = %d, want players-1 = 3", got)
 	}
 
@@ -128,7 +129,7 @@ func TestKittensLeftTracksTheDeck(t *testing.T) {
 		if _, err := game.Apply(s, anyLegalMove(s, rng)); err != nil {
 			t.Fatal(err)
 		}
-		v := For("ABCD", ms, s, "p0", 0, nil)
+		v := For("ABCD", ms, s, "p0", Countdown{}, nil)
 		dead := 0
 		for _, p := range s.Players {
 			if !p.Alive {
@@ -160,6 +161,12 @@ func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
 	}
 
 	p := s.Find(s.CurrentID())
+
+	// A cat set, when one is held: a three-card demand is the only move that puts
+	// a card name on the wire, so the leak scan must cover it.
+	if a, ok := catSetMove(s, p, rng); ok {
+		return a
+	}
 	if rng.Intn(2) == 0 {
 		for _, c := range p.Hand {
 			switch c.Slug {
@@ -169,4 +176,37 @@ func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
 		}
 	}
 	return game.Action{Kind: game.ActDraw, PlayerID: p.ID}
+}
+
+func catSetMove(s *game.State, p *game.Player, rng *rand.Rand) (game.Action, bool) {
+	groups := map[string][]int{}
+	for _, c := range p.Hand {
+		if strings.HasPrefix(c.Slug, "cat-") {
+			groups[c.Slug] = append(groups[c.Slug], c.ID)
+		}
+	}
+	var target string
+	for _, q := range s.Players {
+		if q.Alive && q.ID != p.ID {
+			target = q.ID
+			break
+		}
+	}
+	if target == "" {
+		return game.Action{}, false
+	}
+	for _, ids := range groups {
+		if len(ids) >= 3 {
+			return game.Action{
+				Kind: game.ActPlay, PlayerID: p.ID, CardIDs: ids[:3],
+				TargetID: target, Named: "defuse",
+			}, true
+		}
+		if len(ids) == 2 {
+			return game.Action{
+				Kind: game.ActPlay, PlayerID: p.ID, CardIDs: ids[:2], TargetID: target,
+			}, true
+		}
+	}
+	return game.Action{}, false
 }

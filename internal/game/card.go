@@ -65,8 +65,29 @@ func (t CardType) String() string {
 func (t CardType) Slug() string { return cardSlugs[t] }
 
 // IsCat reports whether the type is one of the five collectible cat cards, which
-// have no effect alone and are only useful in matching pairs.
+// have no effect alone and are only useful in matching sets.
 func (t CardType) IsCat() bool { return t >= CatTaco && t <= CatBeard }
+
+// DemandableTypes lists the card kinds a Three of a Kind may name. Exploding
+// Kittens are left out: they are only ever in the deck or the discard, never in
+// a hand, so demanding one could not possibly succeed.
+func DemandableTypes() []CardType {
+	return []CardType{
+		Defuse, Nope, Attack, Skip, Favor, Shuffle, SeeTheFuture,
+		CatTaco, CatRainbow, CatMelon, CatPotato, CatBeard,
+	}
+}
+
+// TypeFromSlug resolves the identifier clients use back to a card type. Needed
+// because a Three of a Kind names the card it is asking for.
+func TypeFromSlug(slug string) (CardType, bool) {
+	for t, s := range cardSlugs {
+		if s == slug {
+			return t, true
+		}
+	}
+	return 0, false
+}
 
 // Card is a single physical card. ID is unique within a game so that clients can
 // unambiguously refer to one specific card in their hand.

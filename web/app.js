@@ -54,6 +54,20 @@ async function loadAvatars() {
   if (app.view && !app.view.started) renderLobby(app.view);
 }
 
+// The kinds a Three of a Kind may demand, fetched so card names live only in Go.
+const catalogue = { demandable: [] };
+
+async function loadCardKinds() {
+  try {
+    const res = await fetch("/api/cards");
+    if (!res.ok) return;
+    const body = await res.json();
+    catalogue.demandable = body.demandable || [];
+  } catch {
+    // Left empty: the demand picker falls back to explaining why it can't open.
+  }
+}
+
 const app = {
   ws: null,
   view: null,          // latest server state
@@ -65,8 +79,10 @@ const app = {
   peeked: new Set(),   // cards turned back over while covered
   flipping: 0,         // the card id whose flip animation should run
   awaitingTarget: false,
+  blockedHint: "",     // why the last card tap was refused
   modal: null,         // which modal is open, so render() doesn't reopen it
   windowEndsAt: 0,     // performance.now() deadline for the Nope countdown
+  windowTotalMs: 0,    // full window length, as the server reported it
   seenSeq: null,       // highest log seq animated; null until the first state
   logSeq: null,        // highest log seq written into the chat box
   privateQueue: [],    // private notes waiting for the state they belong to
@@ -309,7 +325,7 @@ const SPEAKER_SVG = `
   </svg>`;
 
 function mountMuteButtons() {
-  for (const slot of ["sound-home", "sound-table"]) {
+  for (const slot of ["sound-home", "sound-lobby", "sound-table"]) {
     const host = $(slot);
     if (!host) continue;
     const b = document.createElement("button");
@@ -371,7 +387,10 @@ function handle(msg) {
       break;
     case "state":
       app.view = msg;
-      if (msg.pending) app.windowEndsAt = performance.now() + msg.pending.remainingMs;
+      if (msg.pending) {
+        app.windowEndsAt = performance.now() + msg.pending.remainingMs;
+        app.windowTotalMs = msg.pending.totalMs || 0;
+      }
       playNewEvents(msg); // before render(), so a starting flash defers the modal
       render();
       break;
@@ -430,6 +449,28 @@ function handlePrivate(e) {
 }
 
 // ────────────────────────────────────────────────────────── screens
+
+// leaveRoom walks out of the room entirely and returns to the title screen. In
+// the lobby the server drops the seat outright, so this really is leaving rather
+// than a disconnect to be reconnected — hence closingOnPurpose.
+function leaveRoom() {
+  app.closingOnPurpose = true;
+  if (app.ws) app.ws.close();
+  app.ws = null;
+  app.view = null;
+  app.me = "";
+  app.code = "";
+  app.selected.clear();
+  app.awaitingTarget = false;
+  app.privateQueue.length = 0;
+  app.logSeq = null;
+  app.seenSeq = null;
+  $("conn-warning").hidden = true;
+  // Otherwise a refresh would walk straight back into the room just left.
+  history.replaceState(null, "", location.pathname);
+  showHome();
+  syncSound(); // app.view is null again, so this returns to the title track
+}
 
 function showHome(error) {
   $("home").hidden = false;
@@ -620,6 +661,8 @@ function renderHand(v) {
   for (const id of [...app.selected]) if (!held.has(id)) app.selected.delete(id);
   for (const id of [...app.peeked]) if (!held.has(id)) app.peeked.delete(id);
 
+  const sel = selectedCards(v);
+
   $("hand").replaceChildren(...v.me.hand.map((c) => {
     // While the hand is covered, the first tap turns a card over and the next
     // one picks it, so a glance over your shoulder gets nothing.
@@ -629,7 +672,11 @@ function renderHand(v) {
       return back;
     }
     const el = cardEl(c);
-    el.classList.toggle("selected", app.selected.has(c.id));
+    const picked = app.selected.has(c.id);
+    el.classList.toggle("selected", picked);
+    // Dimmed means "can't join what you've already picked" — visible before the
+    // tap, so a refusal is never a surprise.
+    if (!picked && !selectableWith(c, sel).ok) el.classList.add("blocked");
     if (app.flipping === c.id) el.classList.add("flipping");
     el.onclick = () => toggleSelect(c.id);
     return el;
@@ -664,12 +711,17 @@ function renderActions(v) {
     else playSelection("");
   };
 
-  $("hint").textContent = !v.me.alive ? "You're out — enjoy the show."
+  // A refused tap outranks the standing advice, since it is answering something
+  // the player just did.
+  $("hint").textContent = app.blockedHint
+    ? app.blockedHint
+    : !v.me.alive ? "You're out — enjoy the show."
     : v.phase === "game_over" ? ""
     : !v.me.myTurn ? "Waiting…"
     : sel.length === 0 ? "Play a card, or draw to end your turn."
     : plan.ok ? (plan.needsTarget ? "Press Play, then pick a player." : "")
     : plan.why;
+  $("hint").classList.toggle("warn", Boolean(app.blockedHint));
 
   const row = $("target-row");
   row.hidden = !app.awaitingTarget;
@@ -704,7 +756,10 @@ function renderNopeBar(v) {
 
   const p = v.pending;
   const names = p.cards.map((c) => c.name).join(" + ");
-  const on = p.targetId ? ` on ${nameOf(p.targetId)}` : "";
+  // A demand reads better as what is being asked for than as "on <player>".
+  const on = p.named
+    ? `, demanding ${nameOf(p.targetId)}'s ${p.named.name}`
+    : p.targetId ? ` on ${nameOf(p.targetId)}` : "";
   const stack = p.nopes > 0 ? ` — ${p.nopes} Nope${p.nopes > 1 ? "s" : ""} stacked, so it ${p.cancelled ? "will NOT happen" : "WILL happen"}` : "";
   $("nope-text").textContent = `${nameOf(p.actorId)} played ${names}${on}${stack}`;
 
@@ -720,16 +775,16 @@ function renderNopeBar(v) {
   tickCountdown();
 }
 
-// Must match nopeWindow in internal/room/room.go — it is only the width of the
-// bar, so drifting slightly is cosmetic, not a correctness problem.
-const NOPE_WINDOW_MS = 7000;
-
+// The window length comes from the server with every open window, so there is no
+// constant here to fall out of step with internal/room. The fallback only covers
+// an older server that doesn't send it.
 let countdownRaf = 0;
 function tickCountdown() {
   cancelAnimationFrame(countdownRaf);
+  const total = app.windowTotalMs || 20000;
   const step = () => {
     const left = Math.max(0, app.windowEndsAt - performance.now());
-    $("nope-fill").style.width = `${(left / NOPE_WINDOW_MS) * 100}%`;
+    $("nope-fill").style.width = `${Math.min(100, (left / total) * 100)}%`;
     if (left > 0 && !$("nope-bar").hidden) countdownRaf = requestAnimationFrame(step);
   };
   step();
@@ -926,9 +981,59 @@ function selectedCards(v) {
   return v.me.hand.filter((c) => app.selected.has(c.id));
 }
 
+const isCat = (slug) => slug.startsWith("cat-");
+
+// selectableWith says whether a card may join the current selection. Only two
+// shapes of play exist, so anything else is refused at the point of tapping
+// rather than allowed to build up into something the server would reject:
+// a single non-cat card, or two-to-three cats of one kind.
+function selectableWith(card, sel) {
+  if (sel.length === 0) return { ok: true };
+  const first = sel[0];
+  if (!isCat(first.slug)) {
+    return { ok: false, why: `Only one card at a time — deselect ${first.name} first.` };
+  }
+  if (!isCat(card.slug)) {
+    return { ok: false, why: `${card.name} can't join a cat set — deselect the cats first.` };
+  }
+  if (card.slug !== first.slug) {
+    return { ok: false, why: `A set has to match: only another ${first.name}.` };
+  }
+  if (sel.length >= 3) return { ok: false, why: "Three is the biggest set." };
+  return { ok: true };
+}
+
+let blockedTimer;
+// flashBlocked explains a refused tap in the hint line, then clears itself, so a
+// dimmed card is never silently unresponsive.
+function flashBlocked(why) {
+  app.blockedHint = why;
+  clearTimeout(blockedTimer);
+  blockedTimer = setTimeout(() => { app.blockedHint = ""; render(); }, 2600);
+  render();
+}
+
 function toggleSelect(id) {
-  if (app.selected.has(id)) app.selected.delete(id);
-  else app.selected.add(id);
+  const v = app.view;
+  if (!v) return;
+
+  if (app.selected.has(id)) {
+    app.selected.delete(id);
+    app.blockedHint = "";
+    app.awaitingTarget = false;
+    render();
+    return;
+  }
+
+  const card = v.me.hand.find((c) => c.id === id);
+  if (!card) return;
+  const check = selectableWith(card, selectedCards(v));
+  if (!check.ok) {
+    flashBlocked(check.why);
+    return;
+  }
+  app.selected.add(id);
+  app.blockedHint = "";
   app.awaitingTarget = false;
   render();
 }
@@ -942,21 +1047,41 @@ function selectionPlan(sel) {
     if (s === "favor") return { ok: true, needsTarget: true };
     if (s === "nope") return { ok: false, why: "Nope is played from the purple bar, not on your turn." };
     if (s === "defuse") return { ok: false, why: "Defuse is used automatically when you draw a kitten." };
-    if (s.startsWith("cat-")) return { ok: false, why: "Pick a second matching cat to steal a card." };
+    if (isCat(s)) return { ok: false, why: "Add a second matching cat to steal, or a third to demand." };
     return { ok: false, why: "" };
   }
   if (sel.length === 2) {
-    const [a, b] = sel;
-    if (a.slug === b.slug && a.slug.startsWith("cat-")) return { ok: true, needsTarget: true };
+    if (sel[0].slug === sel[1].slug && isCat(sel[0].slug)) {
+      return { ok: true, needsTarget: true };
+    }
     return { ok: false, why: "Two cats only work if they match." };
+  }
+  if (sel.length === 3) {
+    const same = sel.every((c) => c.slug === sel[0].slug);
+    if (same && isCat(sel[0].slug)) return { ok: true, needsTarget: true, needsName: true };
+    return { ok: false, why: "Three cats only work if all three match." };
   }
   return { ok: false, why: sel.length ? "That's too many cards." : "" };
 }
 
+// playSelection is the last step for everything except a three-cat set, which
+// still needs a card named before it can be sent.
 function playSelection(targetId) {
-  send({ type: "play", cardIds: [...app.selected], targetId });
+  const plan = selectionPlan(selectedCards(app.view));
+  if (plan.needsName) {
+    app.awaitingTarget = false;
+    openDemandModal(targetId);
+    render();
+    return;
+  }
+  sendPlay(targetId, "");
+}
+
+function sendPlay(targetId, named) {
+  send({ type: "play", cardIds: [...app.selected], targetId, named });
   app.selected.clear();
   app.awaitingTarget = false;
+  app.blockedHint = "";
   render();
 }
 
@@ -987,6 +1112,43 @@ function openModal(kind, { title, body = "", cards = [], ok = "", alt = "", onCa
 function closeModal() {
   app.modal = null;
   $("modal").hidden = true;
+}
+
+// openDemandModal is the second half of a Three of a Kind: the target is already
+// chosen, now name the card. Everyone will hear the demand, so there is no need
+// to keep the choice quiet.
+function openDemandModal(targetId) {
+  const kinds = catalogue.demandable;
+  if (!kinds.length) {
+    flashBlocked("Couldn't load the card list — reload the page and try again.");
+    return;
+  }
+  openModal("demand", {
+    title: "Demand a card",
+    body: `Name the card you want from ${nameOf(targetId)}. If they have one they must hand it over; if not, the three cats are spent for nothing.`,
+    alt: "Cancel",
+  });
+
+  const grid = document.createElement("div");
+  grid.className = "demand-grid";
+  grid.replaceChildren(...kinds.map((k) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "demand-pick";
+    b.dataset.slug = k.slug;
+    const g = document.createElement("span");
+    g.className = "demand-glyph";
+    g.textContent = GLYPHS[k.slug] || "🐱";
+    const n = document.createElement("span");
+    n.textContent = k.name;
+    b.append(g, n);
+    b.onclick = () => { closeModal(); sendPlay(targetId, k.slug); };
+    return b;
+  }));
+  $("modal-cards").replaceChildren(grid);
+
+  // Cancelling has to put the cats back in play, not silently eat the turn.
+  $("modal-alt").onclick = () => { closeModal(); render(); };
 }
 
 function openGiveModal(v) {
@@ -1151,7 +1313,20 @@ function logLine(e) {
     case "exploded":  text = `💥 ${who} drew an Exploding Kitten!`; big = true; break;
     case "defused":   text = e.text ? `${who} ${e.text}` : `${who} defused it`; break;
     case "eliminated":text = `☠️ ${who} ${who === "You" ? "are" : "is"} out`; big = true; break;
+    // A demand is announced out loud, so unlike a random steal it is logged in
+    // full for everybody — including the card named and whether it landed.
+    case "demanded":
+      text = `${who} demanded ${nameOf(e.targetId)}'s ${e.text}`;
+      break;
+    case "missed":
+      text = `…${nameOf(e.targetId)} had no ${e.text}. Three cats wasted.`;
+      break;
     case "stole":
+      // The trio's transfer names the card, so it is public and worth showing.
+      if (e.text) {
+        text = `${who} took ${nameOf(e.targetId)}'s ${e.text}`;
+        break;
+      }
       if (e.actorId === app.me || e.targetId === app.me) return null;
       text = `${who} stole a card from ${nameOf(e.targetId)}`;
       break;
@@ -1226,6 +1401,26 @@ $("copy-link").onclick = async () => {
 $("hand-cover").onclick = toggleCoverHand;
 $("target-cancel").onclick = () => { app.awaitingTarget = false; render(); };
 
+$("leave-btn").onclick = leaveRoom;
+
+// The log stays where you left it between rounds and page loads.
+const logOpen = () => localStorage.getItem("ek:log") !== "closed";
+
+function setLogOpen(open) {
+  localStorage.setItem("ek:log", open ? "open" : "closed");
+  $("log-panel").classList.toggle("collapsed", !open);
+  $("log-caret").textContent = open ? "▾" : "▸";
+  $("log-collapse").setAttribute("aria-expanded", String(open));
+  $("log-collapse").title = open ? "Hide the log" : "Show the log";
+  if (open) {
+    const box = $("log");
+    box.scrollTop = box.scrollHeight; // reopen at the newest line
+  }
+}
+
+$("log-collapse").onclick = () => setLogOpen(!logOpen());
+setLogOpen(logOpen());
+
 const showRules = (on) => { $("rules-panel").hidden = !on; };
 $("rules-lobby").onclick = () => showRules(true);
 $("rules-table").onclick = () => showRules(true);
@@ -1239,6 +1434,7 @@ document.addEventListener("keydown", (e) => {
 
 mountMuteButtons();
 loadAvatars();
+loadCardKinds();
 armAudio();  // must be installed before the first play() attempt below
 syncSound(); // the title screen is already up, so this starts the intro
 

@@ -102,28 +102,43 @@ func newHarness(t *testing.T, n int) *harness {
 		h.recs = append(h.recs, rec)
 		h.ids = append(h.ids, id)
 	}
+	h.sync(t) // let the join broadcasts land before any test reads a view
 	return h
 }
 
-// act submits a message on behalf of a player and waits until *every* recorder
-// has the resulting state. Waiting on only the actor would race: broadcast walks
-// the members in order, so a later member can still be holding the previous view
-// when the actor's has already landed.
+// sync blocks until the room has finished everything queued so far, including the
+// broadcasts. The room handles commands one at a time in submission order, so a
+// reply to a command queued *now* proves every earlier command has already run.
+//
+// This is why act() does not count messages: a count captured while an earlier
+// broadcast was still in flight can be satisfied by that broadcast instead of the
+// one the test triggered, which reads as a stale view.
+func (h *harness) sync(t *testing.T) {
+	t.Helper()
+	reply := make(chan bool, 1)
+	select {
+	case h.room.cmds <- cmdIdleCheck{reply: reply}:
+	case <-time.After(3 * time.Second):
+		t.Fatal("room stopped accepting commands")
+	}
+	select {
+	case <-reply:
+	case <-time.After(3 * time.Second):
+		t.Fatal("room stopped answering commands")
+	}
+}
+
+// act submits a message on behalf of a player and returns the view that resulted,
+// once every recorder has it.
 func (h *harness) act(t *testing.T, i int, msg ClientMsg) *view.View {
 	t.Helper()
-	before := make([]int, len(h.recs))
-	for j, rec := range h.recs {
-		_, before[j] = rec.snapshot()
-	}
 	h.room.Submit(h.ids[i], msg)
-	var out *view.View
-	for j, rec := range h.recs {
-		v := rec.await(t, before[j])
-		if j == i {
-			out = v
-		}
+	h.sync(t)
+	v, _ := h.recs[i].snapshot()
+	if v == nil {
+		t.Fatalf("player %d has no view after %s", i, msg.Type)
 	}
-	return out
+	return v
 }
 
 func (h *harness) start(t *testing.T) *view.View {
@@ -296,6 +311,38 @@ func mustPhase(h *harness) string {
 		return "?"
 	}
 	return v.Phase
+}
+
+// The client draws the countdown bar from what the server reports, so the window
+// length has to actually reach it. This drives real play until a window opens
+// rather than reaching into the room's internals.
+func TestNopeWindowLengthReachesClients(t *testing.T) {
+	h := newHarness(t, 3)
+	h.start(t)
+	rng := rand.New(rand.NewSource(11))
+
+	for step := 0; step < 400; step++ {
+		v, _ := h.recs[0].snapshot()
+		if v.Phase == "game_over" {
+			t.Skip("game ended before any Nope window opened")
+		}
+		if v.Pending != nil {
+			if got := v.Pending.TotalMs; got != nopeWindow.Milliseconds() {
+				t.Fatalf("pending.totalMs = %d, want %d", got, nopeWindow.Milliseconds())
+			}
+			if v.Pending.RemainingMs <= 0 || v.Pending.RemainingMs > v.Pending.TotalMs {
+				t.Fatalf("remainingMs = %d, want it inside (0, %d]",
+					v.Pending.RemainingMs, v.Pending.TotalMs)
+			}
+			return
+		}
+		i, msg, ok := nextMove(h, rng)
+		if !ok {
+			t.Fatalf("step %d: nobody could act", step)
+		}
+		h.act(t, i, msg)
+	}
+	t.Skip("no Nope window opened in 400 moves")
 }
 
 // nextMove picks a legal action for whoever the redacted views say must act.

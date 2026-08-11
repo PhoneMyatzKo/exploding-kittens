@@ -32,6 +32,14 @@ type Seat struct {
 	Current   bool   `json:"current"`
 }
 
+// NamedCard is a card *kind* rather than a specific card — what a Three of a Kind
+// is asking for. Deliberately not a game.Card: that would carry an ID, and no
+// card ID may reach a player who isn't holding it.
+type NamedCard struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
 // Pending describes the action sitting in an open Nope window. The cards are
 // already public — they were played face up.
 type Pending struct {
@@ -41,9 +49,13 @@ type Pending struct {
 	Cards     []game.Card `json:"cards"`
 	Nopes     int         `json:"nopes"`
 	Cancelled bool        `json:"cancelled"`
+	// Named is the card a Three of a Kind is demanding, for the banner. Public.
+	Named *NamedCard `json:"named,omitempty"`
 	// RemainingMs is sent instead of an absolute deadline so the countdown does
-	// not depend on the player's device clock agreeing with the server's.
+	// not depend on the player's device clock agreeing with the server's. TotalMs
+	// comes along so the client can size the bar without knowing the constant.
 	RemainingMs int64 `json:"remainingMs"`
+	TotalMs     int64 `json:"totalMs"`
 }
 
 // Me carries the viewer's private information and the affordances the current
@@ -106,8 +118,14 @@ func Lobby(code string, members []Membership, viewerID string) *View {
 	return v
 }
 
+// Countdown is the timer on an open Nope window. Zero means no window is open.
+type Countdown struct {
+	RemainingMs int64
+	TotalMs     int64
+}
+
 // For renders an in-progress game from viewerID's seat.
-func For(code string, members []Membership, s *game.State, viewerID string, remainingMs int64, log []Entry) *View {
+func For(code string, members []Membership, s *game.State, viewerID string, cd Countdown, log []Entry) *View {
 	v := &View{
 		Type:           "state",
 		Code:           code,
@@ -176,7 +194,12 @@ func For(code string, members []Membership, s *game.State, viewerID string, rema
 			Cards:       s.Pending.Cards,
 			Nopes:       s.Pending.Nopes,
 			Cancelled:   s.Pending.Cancelled(),
-			RemainingMs: remainingMs,
+			RemainingMs: cd.RemainingMs,
+			TotalMs:     cd.TotalMs,
+		}
+		if s.Pending.HasNamed {
+			named := s.Pending.Named
+			v.Pending.Named = &NamedCard{Name: named.String(), Slug: named.Slug()}
 		}
 	}
 	return v

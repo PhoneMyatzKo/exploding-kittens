@@ -25,6 +25,9 @@ const (
 	PendShuffle PendingKind = "shuffle"
 	PendFuture  PendingKind = "future"
 	PendCatPair PendingKind = "cat_pair"
+	// PendCatTriple is three matching cats: the actor names a card and takes it
+	// from the target if they hold one.
+	PendCatTriple PendingKind = "cat_triple"
 )
 
 // PendingAction is an effect that has been played but not yet resolved, because
@@ -32,8 +35,13 @@ const (
 type PendingAction struct {
 	Kind     PendingKind
 	ActorID  string
-	TargetID string // Favor and cat-pair only
+	TargetID string // Favor and cat sets only
 	Cards    []Card // the cards that were played to trigger this
+
+	// Named is the card a Three of a Kind is demanding. Public: you say it out
+	// loud, and everybody hears whether it landed.
+	Named    CardType
+	HasNamed bool
 
 	// Nopes counts the Nope cards stacked on top. An odd count cancels the action.
 	Nopes int

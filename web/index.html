@@ -42,6 +42,8 @@
 <!-- ───────────────────────────── lobby ───────────────────────────── -->
 <section id="lobby" class="screen" hidden>
   <div class="panel">
+    <span id="sound-lobby" class="sound-corner"></span>
+
     <p class="muted">Room code</p>
     <p id="lobby-code" class="room-code"></p>
     <button id="copy-link" class="btn ghost small">Copy invite link</button>
@@ -57,7 +59,10 @@
 
     <p id="lobby-hint" class="muted"></p>
     <button id="start-btn" class="btn primary big" hidden>Deal the cards</button>
-    <button id="rules-lobby" class="btn ghost small">How to play</button>
+    <div class="lobby-actions">
+      <button id="rules-lobby" class="btn ghost small">How to play</button>
+      <button id="leave-btn" class="btn ghost small">← Back to menu</button>
+    </div>
   </div>
 </section>
 
@@ -87,8 +92,12 @@
       <div id="discard" class="discard"></div>
     </div>
 
-    <aside class="log-panel">
-      <div class="log-head"><strong>Play by play</strong></div>
+    <aside id="log-panel" class="log-panel">
+      <button id="log-collapse" class="log-head" aria-expanded="true"
+              aria-controls="log" title="Hide the log">
+        <strong>Play by play</strong>
+        <span id="log-caret" class="caret">▾</span>
+      </button>
       <ol id="log" class="log" aria-live="polite"></ol>
     </aside>
   </div>
@@ -153,6 +162,10 @@
       <dt>🌮 Two matching Cat Cards</dt>
       <dd>Cat cards do nothing on their own. Play a matching pair to steal one
         random card from a player of your choice.</dd>
+      <dt>🌮🌮🌮 Three matching Cat Cards</dt>
+      <dd>Name the card you want and take it from a player of your choice. The
+        whole table hears what you asked for. If they don't have one you get
+        nothing, and the three cats are gone.</dd>
       <dt>🚫 Nope</dt>
       <dd>Cancels the card somebody just played, from anyone's hand, at any time
         — including out of turn. A Nope on a Nope un-cancels it. Nope cannot
@@ -160,7 +173,7 @@
     </dl>
 
     <h3>The Nope window</h3>
-    <p>Every card played sits on the table for seven seconds before it takes
+    <p>Every card played sits on the table for twenty seconds before it takes
       effect. That purple bar at the bottom is your chance to Nope it. The
       countdown restarts whenever somebody adds another Nope to the pile.</p>
 

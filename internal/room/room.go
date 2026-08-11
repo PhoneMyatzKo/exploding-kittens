@@ -22,8 +22,10 @@ import (
 )
 
 const (
-	// nopeWindow is how long an action sits on the table before it resolves.
-	nopeWindow = 7 * time.Second
+	// nopeWindow is how long an action sits on the table before it resolves. It is
+	// sent to clients with every open window, so the countdown bar cannot drift
+	// out of step with it.
+	nopeWindow = 20 * time.Second
 	// idleGrace is how long the table waits for a disconnected player who is
 	// holding everyone up before acting on their behalf.
 	idleGrace = 25 * time.Second
@@ -44,6 +46,7 @@ type ClientMsg struct {
 	TargetID string `json:"targetId"`
 	Index    int    `json:"index"`
 	Avatar   string `json:"avatar"`
+	Named    string `json:"named"`
 }
 
 var (
@@ -436,7 +439,10 @@ func (r *Room) applyAction(a game.Action) error {
 // toAction maps a wire message onto an engine action. ActNopeExpired is
 // deliberately absent: only the room's own timer may produce it.
 func toAction(playerID string, m ClientMsg) (game.Action, bool) {
-	a := game.Action{PlayerID: playerID, CardIDs: m.CardIDs, TargetID: m.TargetID, Index: m.Index}
+	a := game.Action{
+		PlayerID: playerID, CardIDs: m.CardIDs, TargetID: m.TargetID,
+		Index: m.Index, Named: m.Named,
+	}
 	switch m.Type {
 	case "play":
 		a.Kind = game.ActPlay
@@ -553,11 +559,14 @@ func (r *Room) viewFor(id string) *view.View {
 	if r.state == nil {
 		return view.Lobby(r.Code, ms, id)
 	}
-	var remaining int64
+	var cd view.Countdown
 	if r.inWindow {
-		remaining = max(0, time.Until(r.nopeDeadline).Milliseconds())
+		cd = view.Countdown{
+			RemainingMs: max(0, time.Until(r.nopeDeadline).Milliseconds()),
+			TotalMs:     nopeWindow.Milliseconds(),
+		}
 	}
-	return view.For(r.Code, ms, r.state, id, remaining, r.logbuf)
+	return view.For(r.Code, ms, r.state, id, cd, r.logbuf)
 }
 
 func (r *Room) broadcast() {
