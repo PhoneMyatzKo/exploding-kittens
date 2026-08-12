@@ -72,6 +72,9 @@ type member struct {
 // Room is one table. All fields below cmds are owned exclusively by run().
 type Room struct {
 	Code string
+	// Public lists the room in the lobby browser. Set once before run() starts and
+	// never written again, so reading it needs no synchronisation.
+	Public bool
 
 	cmds      chan command
 	done      chan struct{}
@@ -113,11 +116,28 @@ type cmdMsg struct {
 	msg      ClientMsg
 }
 type cmdIdleCheck struct{ reply chan bool }
+type cmdSummary struct{ reply chan Summary }
 
 func (cmdJoin) isCommand()      {}
 func (cmdLeave) isCommand()     {}
 func (cmdMsg) isCommand()       {}
 func (cmdIdleCheck) isCommand() {}
+func (cmdSummary) isCommand()   {}
+
+// Summary is one row of the public lobby browser. Deliberately thin: a code, who
+// is waiting and how many — nothing about anyone's cards, because this is served
+// to people who are not in the room.
+type Summary struct {
+	Code     string   `json:"code"`
+	Host     string   `json:"host"`
+	Players  int      `json:"players"`
+	Capacity int      `json:"capacity"`
+	Names    []string `json:"names"`
+	// Joinable is false once a game is under way or the seats are full. The
+	// browser only ever shows joinable rooms, but the flag is what decides that.
+	Joinable bool `json:"joinable"`
+	Public   bool `json:"-"`
+}
 
 type joinResult struct {
 	PlayerID string
@@ -125,9 +145,10 @@ type joinResult struct {
 	Err      error
 }
 
-func newRoom(code string) *Room {
+func newRoom(code string, public bool) *Room {
 	r := &Room{
 		Code:      code,
+		Public:    public,
 		cmds:      make(chan command, 32),
 		done:      make(chan struct{}),
 		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -187,6 +208,8 @@ func (r *Room) run() {
 				r.handleMsg(c)
 			case cmdIdleCheck:
 				c.reply <- r.isReapable()
+			case cmdSummary:
+				c.reply <- r.summary()
 			}
 		case <-r.nopeTimer.C:
 			r.inWindow = false
@@ -556,17 +579,23 @@ func (r *Room) memberships() []view.Membership {
 
 func (r *Room) viewFor(id string) *view.View {
 	ms := r.memberships()
-	if r.state == nil {
-		return view.Lobby(r.Code, ms, id)
-	}
-	var cd view.Countdown
-	if r.inWindow {
-		cd = view.Countdown{
-			RemainingMs: max(0, time.Until(r.nopeDeadline).Milliseconds()),
-			TotalMs:     nopeWindow.Milliseconds(),
+	v := func() *view.View {
+		if r.state == nil {
+			return view.Lobby(r.Code, ms, id)
 		}
-	}
-	return view.For(r.Code, ms, r.state, id, cd, r.logbuf)
+		var cd view.Countdown
+		if r.inWindow {
+			cd = view.Countdown{
+				RemainingMs: max(0, time.Until(r.nopeDeadline).Milliseconds()),
+				TotalMs:     nopeWindow.Milliseconds(),
+			}
+		}
+		return view.For(r.Code, ms, r.state, id, cd, r.logbuf)
+	}()
+	// Visibility belongs to the room, not the game, so it is stamped on here
+	// rather than threaded through both view constructors.
+	v.Public = r.Public
+	return v
 }
 
 func (r *Room) broadcast() {
@@ -648,6 +677,50 @@ func (r *Room) connectedCount() int {
 // isReapable reports whether the room has sat empty long enough to discard.
 func (r *Room) isReapable() bool {
 	return r.connectedCount() == 0 && time.Since(r.lastEmpty) > 15*time.Minute
+}
+
+// summary describes the room for the lobby browser. Computed here, in the
+// goroutine that owns members and state, so the manager never reads either.
+func (r *Room) summary() Summary {
+	s := Summary{
+		Code:     r.Code,
+		Capacity: game.MaxPlayers,
+		Public:   r.Public,
+		Players:  r.connectedCount(),
+	}
+	for _, m := range r.members {
+		if m.Connected {
+			s.Names = append(s.Names, m.Name)
+			if m.Host {
+				s.Host = m.Name
+			}
+		}
+	}
+	// A room with nobody in it is a room the reaper has not got to yet; offering
+	// it would hand somebody an empty table with no host.
+	s.Joinable = r.state == nil && s.Players > 0 && s.Players < game.MaxPlayers
+	return s
+}
+
+// Summarize asks the room to describe itself. Returns false if the room is
+// shutting down or wedged, so a slow room cannot stall the whole listing.
+func (r *Room) Summarize(timeout time.Duration) (Summary, bool) {
+	reply := make(chan Summary, 1)
+	select {
+	case r.cmds <- cmdSummary{reply: reply}:
+	case <-r.done:
+		return Summary{}, false
+	case <-time.After(timeout):
+		return Summary{}, false
+	}
+	select {
+	case s := <-reply:
+		return s, true
+	case <-r.done:
+		return Summary{}, false
+	case <-time.After(timeout):
+		return Summary{}, false
+	}
 }
 
 // close asks the room to shut down. It is safe to call from any goroutine and
