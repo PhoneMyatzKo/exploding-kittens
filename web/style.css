@@ -111,7 +111,7 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 
 /* The gradient gets the two screens with no body text of their own — every
    readable thing on them lives inside the paper panel. */
-#home, #lobby { display: grid; place-items: center; padding: 24px; background: var(--grad); }
+#home, #lobby, #browser { display: grid; place-items: center; padding: 24px; background: var(--grad); }
 
 .panel {
   position: relative;   /* anchors .sound-corner */
@@ -155,6 +155,40 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .mute.off .wave { display: none; }
 .mute.off .slash { display: inline; }
 .mute.off { color: var(--muted); }
+
+/* ─────────────── visibility toggle & public lobby browser ─────────────── */
+
+/* Two buttons acting as radios: the chosen one takes the gold band the room code
+   uses, so "selected" reads the same way everywhere in the app. */
+.segmented { display: flex; gap: 8px; }
+.seg {
+  flex: 1; font: inherit; font-weight: 600; font-size: 14px;
+  color: var(--ink); background: var(--bg-soft);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 8px; cursor: pointer;
+  display: grid; gap: 2px; justify-items: center;
+  transition: border-color .12s ease, background .12s ease;
+}
+.seg small { font-size: 10px; font-weight: 500; color: var(--muted); line-height: 1.25; }
+.seg.on { border-color: var(--gold); background: linear-gradient(var(--gold), var(--gold)) bottom / 100% 4px no-repeat, var(--bg-soft); }
+.seg.on small { color: var(--ink); }
+.seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.browser-title { font-size: 26px; }
+
+.room-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.room-list li {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-soft); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; text-align: left;
+}
+.room-info { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.room-tag { font-size: 17px; font-weight: 800; letter-spacing: .14em; }
+/* Names can be long; the row must not stretch the panel. */
+.room-who {
+  font-size: 12px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .join-row { display: flex; gap: 8px; }
 .code-input {

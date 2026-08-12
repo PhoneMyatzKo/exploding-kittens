@@ -19,6 +19,14 @@
   the toggle. Collapsed state is remembered across reloads. Sideways on desktop
   it shrinks to a narrow spine rather than leaving a 300px empty bar.
 
+- ~~Create Room with Private or Public setting~~ — a Public/Private toggle on the
+  home screen, public by default and remembered between sessions. The lobby shows
+  which one you got, under the room code.
+- ~~Users can see public Room~~ — **🌍 Public lobby** on the menu lists joinable
+  public rooms with host, seat count and who's waiting; tap Join and you're in
+  without ever seeing a code. Only rooms you can actually enter are listed, so a
+  room disappears once it's dealt or full.
+
 ## Ideas not started
 
 - Five Different Cards combo (take any card from the discard pile) — the only

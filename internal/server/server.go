@@ -5,6 +5,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 
@@ -59,9 +60,26 @@ func New(mgr *room.Manager) http.Handler {
 	})
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
-		rm := mgr.Create()
-		log.Printf("room %s created", rm.Code)
-		writeJSON(w, http.StatusOK, map[string]string{"code": rm.Code})
+		// Public unless the body says otherwise, so an empty POST still behaves
+		// like the button most people press.
+		body := struct {
+			Public *bool `json:"public"`
+		}{}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+		public := body.Public == nil || *body.Public
+
+		rm := mgr.Create(public)
+		visibility := "private"
+		if public {
+			visibility = "public"
+		}
+		log.Printf("room %s created (%s)", rm.Code, visibility)
+		writeJSON(w, http.StatusOK, map[string]any{"code": rm.Code, "public": public})
+	})
+
+	// The lobby browser. Only rooms somebody could actually join are listed.
+	mux.HandleFunc("GET /api/rooms", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string][]room.Summary{"rooms": mgr.List()})
 	})
 
 	mux.HandleFunc("GET /api/rooms/{code}", func(w http.ResponseWriter, r *http.Request) {

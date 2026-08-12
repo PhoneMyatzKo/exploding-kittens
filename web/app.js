@@ -499,7 +499,80 @@ function leaveRoom() {
   syncSound(); // app.view is null again, so this returns to the title track
 }
 
+// ─────────────────────── public lobby browser ───────────────────────
+
+// Polled rather than pushed: the browser is not in a room yet, so there is no
+// socket to be told on. Polling only runs while the screen is actually up.
+const REFRESH_MS = 4000;
+const browser = { timer: 0, open: false };
+
+function showBrowser() {
+  $("home").hidden = true;
+  $("lobby").hidden = true;
+  $("table").hidden = true;
+  $("browser").hidden = false;
+  browser.open = true;
+  refreshBrowser();
+  clearInterval(browser.timer);
+  browser.timer = setInterval(refreshBrowser, REFRESH_MS);
+}
+
+function closeBrowser() {
+  browser.open = false;
+  clearInterval(browser.timer);
+  browser.timer = 0;
+  $("browser").hidden = true;
+}
+
+async function refreshBrowser() {
+  let rooms;
+  try {
+    const res = await fetch("/api/rooms");
+    if (!res.ok) throw new Error("server said no");
+    rooms = (await res.json()).rooms || [];
+  } catch {
+    if (browser.open) $("browser-status").textContent = "Couldn't reach the server.";
+    return;
+  }
+  // The screen may have been left while the request was in flight.
+  if (browser.open) renderRoomList(rooms);
+}
+
+function renderRoomList(rooms) {
+  $("browser-status").textContent = rooms.length
+    ? `${rooms.length} room${rooms.length === 1 ? "" : "s"} waiting for players`
+    : "No public rooms right now. Create one and it will show up here for everybody else.";
+
+  $("browser-list").replaceChildren(...rooms.map((r) => {
+    const li = document.createElement("li");
+
+    const info = document.createElement("div");
+    info.className = "room-info";
+    const code = document.createElement("b");
+    code.className = "room-tag";
+    code.textContent = r.code;
+    const who = document.createElement("span");
+    who.className = "room-who";
+    const names = (r.names || []).join(", ");
+    who.textContent = `${r.players}/${r.capacity} · ${names || "waiting"}`;
+    info.append(code, who);
+
+    const join = document.createElement("button");
+    join.className = "btn primary small";
+    join.textContent = "Join";
+    join.onclick = () => {
+      app.name = currentName();
+      closeBrowser();
+      connect(r.code);
+    };
+
+    li.append(info, join);
+    return li;
+  }));
+}
+
 function showHome(error) {
+  closeBrowser();
   $("home").hidden = false;
   $("lobby").hidden = true;
   $("table").hidden = true;
@@ -514,6 +587,7 @@ function showHome(error) {
 function render() {
   const v = app.view;
   if (!v) return;
+  closeBrowser(); // a live room always wins the screen
 
   if (!v.started) {
     $("home").hidden = true;
@@ -532,6 +606,11 @@ function render() {
 
 function renderLobby(v) {
   $("lobby-code").textContent = v.code;
+  // Whether the room is advertised matters most to whoever is about to invite
+  // people, so it sits right under the code they are reading out.
+  $("lobby-visibility").textContent = v.public
+    ? "🌍 Listed in the public lobby"
+    : "🔒 Private — only this code gets in";
   renderAvatarPicker(v);
 
   const list = $("lobby-players");
@@ -1447,10 +1526,29 @@ function currentName() {
   return n;
 }
 
+// Remembered so a host who always plays privately isn't re-picking every time.
+const storedPublic = () => localStorage.getItem("ek:visibility") !== "private";
+
+function setCreateVisibility(pub) {
+  localStorage.setItem("ek:visibility", pub ? "public" : "private");
+  for (const [id, on] of [["vis-public", pub], ["vis-private", !pub]]) {
+    $(id).classList.toggle("on", on);
+    $(id).setAttribute("aria-checked", String(on));
+  }
+}
+
+$("vis-public").onclick = () => setCreateVisibility(true);
+$("vis-private").onclick = () => setCreateVisibility(false);
+setCreateVisibility(storedPublic());
+
 $("create-btn").onclick = async () => {
   app.name = currentName();
   try {
-    const res = await fetch("/api/rooms", { method: "POST" });
+    const res = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ public: storedPublic() }),
+    });
     if (!res.ok) throw new Error("server said no");
     const { code } = await res.json();
     connect(code);
@@ -1483,6 +1581,9 @@ $("hand-cover").onclick = toggleCoverHand;
 $("target-cancel").onclick = () => { app.awaitingTarget = false; render(); };
 
 $("leave-btn").onclick = leaveRoom;
+$("browse-btn").onclick = showBrowser;
+$("browser-refresh").onclick = refreshBrowser;
+$("browser-back").onclick = () => showHome();
 
 // The log stays where you left it between rounds and page loads.
 const logOpen = () => localStorage.getItem("ek:log") !== "closed";

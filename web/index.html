@@ -25,6 +25,19 @@
       <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="Alex">
     </label>
 
+    <!-- Visibility is decided before the room exists, so it is chosen here
+         rather than in the lobby. Public is preselected. -->
+    <div class="segmented" role="radiogroup" aria-label="Who can find this room">
+      <button id="vis-public" class="seg on" role="radio" aria-checked="true" type="button">
+        🌍 Public
+        <small>Listed for anyone on this server</small>
+      </button>
+      <button id="vis-private" class="seg" role="radio" aria-checked="false" type="button">
+        🔒 Private
+        <small>Code only</small>
+      </button>
+    </div>
+
     <button id="create-btn" class="btn primary big">Create a room</button>
 
     <div class="or"><span>or join one</span></div>
@@ -35,7 +48,24 @@
       <button class="btn" type="submit">Join</button>
     </form>
 
+    <button id="browse-btn" class="btn big">🌍 Public lobby</button>
+
     <p id="home-error" class="error" hidden></p>
+  </div>
+</section>
+
+<!-- ─────────────────────── public lobby browser ─────────────────────── -->
+<section id="browser" class="screen" hidden>
+  <div class="panel">
+    <h2 class="logo browser-title">🌍 Public lobby</h2>
+    <p id="browser-status" class="muted">Looking for rooms…</p>
+
+    <ul id="browser-list" class="room-list"></ul>
+
+    <div class="lobby-actions">
+      <button id="browser-refresh" class="btn ghost small">Refresh</button>
+      <button id="browser-back" class="btn ghost small">← Back to menu</button>
+    </div>
   </div>
 </section>
 
@@ -46,6 +76,7 @@
 
     <p class="muted">Room code</p>
     <p id="lobby-code" class="room-code"></p>
+    <p id="lobby-visibility" class="muted"></p>
     <button id="copy-link" class="btn ghost small">Copy invite link</button>
 
     <!-- Grid filled by renderAvatarPicker(); hidden until the catalogue of

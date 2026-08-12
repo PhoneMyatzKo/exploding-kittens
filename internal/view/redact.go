@@ -103,6 +103,10 @@ type View struct {
 	Pending        *Pending   `json:"pending,omitempty"`
 	WinnerID       string     `json:"winnerId,omitempty"`
 
+	// Public is the room's visibility, so the lobby can say whether the room is
+	// advertised. Filled in by the room, which owns that fact.
+	Public bool `json:"public"`
+
 	Log []Entry `json:"log"`
 }
 
