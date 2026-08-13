@@ -38,8 +38,28 @@ The client is embedded in the binary, so `kittens.exe` is the only file you need
 
 1. Someone clicks **Create a room** and reads out the code (or shares the invite
    link, which drops people straight in).
-2. Everyone else types the code and joins.
+2. Everyone else types the code and joins — or opens **🌍 Public lobby** and
+   picks the room out of the list, no code needed.
 3. The host clicks **Deal the cards**.
+
+### Public and private rooms
+
+Rooms are **public** by default and appear under **Public lobby** for anybody who
+can reach the server. Switch to **Private** before creating and the room is
+reachable only by its code. The lobby says which one you got, right under the
+code you are about to read out.
+
+The list only offers rooms you could actually walk into: public, still in the
+lobby, with a host present and a seat free. A room drops off it the moment the
+cards are dealt, so every row stays tappable — no dead entries to try and fail
+on. It is polled every four seconds while the screen is open, and not at all
+otherwise; there is no socket to push down, because a browsing player has not
+joined anything yet.
+
+Each room describes itself through its own goroutine (`Room.Summarize`) rather
+than the manager reading room state directly, so the listing does not become the
+one place that breaks the single-writer rule. Rooms that fail to answer within
+250ms are left out instead of holding up the page.
 
 On your turn you may play as many cards as you like, then you **draw to end your
 turn**. Drawing is what passes play on — so is Skip, and so is Attack.

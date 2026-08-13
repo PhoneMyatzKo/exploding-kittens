@@ -1,6 +1,7 @@
 package room
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
@@ -19,8 +20,9 @@ func NewManager() *Manager {
 	return m
 }
 
-// Create allocates a room with a fresh, unused code.
-func (m *Manager) Create() *Room {
+// Create allocates a room with a fresh, unused code. A public room is listed by
+// List; a private one is reachable only by its code.
+func (m *Manager) Create(public bool) *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for {
@@ -28,10 +30,58 @@ func (m *Manager) Create() *Room {
 		if _, taken := m.rooms[code]; taken {
 			continue
 		}
-		r := newRoom(code)
+		r := newRoom(code, public)
 		m.rooms[code] = r
 		return r
 	}
+}
+
+// List returns the public rooms somebody could actually walk into: still in the
+// lobby, with a host present and a seat free.
+//
+// Each room describes itself through its own command channel, so this never
+// reads room-owned state. Rooms that don't answer promptly are left out rather
+// than allowed to hold up the listing.
+func (m *Manager) List() []Summary {
+	m.mu.RLock()
+	candidates := make([]*Room, 0, len(m.rooms))
+	for _, r := range m.rooms {
+		if r.Public {
+			candidates = append(candidates, r)
+		}
+	}
+	m.mu.RUnlock()
+
+	out := make([]Summary, 0, len(candidates))
+	for _, r := range candidates {
+		s, ok := r.Summarize(250 * time.Millisecond)
+		if ok && s.Joinable {
+			out = append(out, s)
+		}
+	}
+	// Stable order so the list doesn't shuffle under a tapping finger between
+	// polls; Go randomises map iteration.
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
+}
+
+// SummarizeAll is List without the joinable filter, for tests and diagnostics.
+func (m *Manager) SummarizeAll() []Summary {
+	m.mu.RLock()
+	all := make([]*Room, 0, len(m.rooms))
+	for _, r := range m.rooms {
+		all = append(all, r)
+	}
+	m.mu.RUnlock()
+
+	out := make([]Summary, 0, len(all))
+	for _, r := range all {
+		if s, ok := r.Summarize(250 * time.Millisecond); ok {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
 }
 
 // Get looks up a room by a possibly-messy user-typed code.

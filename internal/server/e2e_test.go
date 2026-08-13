@@ -2,10 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -132,6 +134,153 @@ func newTestServer(t *testing.T) (string, *room.Manager) {
 		mgr.Shutdown()
 	})
 	return srv.URL, mgr
+}
+
+// createRoomVisible posts an explicit visibility, the way the two buttons on the
+// home screen do.
+func createRoomVisible(t *testing.T, base string, public bool) string {
+	t.Helper()
+	body := strings.NewReader(fmt.Sprintf(`{"public":%t}`, public))
+	resp, err := http.Post(base+"/api/rooms", "application/json", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code   string `json:"code"`
+		Public bool   `json:"public"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Public != public {
+		t.Fatalf("created room public = %v, want %v", out.Public, public)
+	}
+	return out.Code
+}
+
+func listRooms(t *testing.T, base string) []room.Summary {
+	t.Helper()
+	resp, err := http.Get(base + "/api/rooms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/rooms: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Rooms []room.Summary `json:"rooms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out.Rooms
+}
+
+func listedCodes(rooms []room.Summary) []string {
+	out := make([]string, len(rooms))
+	for i, s := range rooms {
+		out[i] = s.Code
+	}
+	return out
+}
+
+// TestPublicLobbyListing walks the browser's whole story over HTTP: a public room
+// with somebody in it shows up, a private one never does, and the row carries what
+// the list needs to render.
+func TestPublicLobbyListing(t *testing.T) {
+	base, _ := newTestServer(t)
+
+	pubCode := createRoomVisible(t, base, true)
+	privCode := createRoomVisible(t, base, false)
+
+	// Neither is listed yet: nobody has connected, so there is no host to join.
+	if got := listedCodes(listRooms(t, base)); len(got) != 0 {
+		t.Fatalf("listing = %v, want empty before anyone connects", got)
+	}
+
+	pub := dial(t, base, pubCode, "Ann", "")
+	pub.await(t, 0)
+	priv := dial(t, base, privCode, "Zoe", "")
+	priv.await(t, 0)
+
+	var row *room.Summary
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && row == nil {
+		for _, s := range listRooms(t, base) {
+			if s.Code == pubCode {
+				row = &s
+			}
+		}
+		if row == nil {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if row == nil {
+		t.Fatalf("public room %s never appeared in %v", pubCode, listedCodes(listRooms(t, base)))
+	}
+	if got := listedCodes(listRooms(t, base)); slices.Contains(got, privCode) {
+		t.Errorf("private room %s leaked into the listing %v", privCode, got)
+	}
+	if row.Players != 1 || row.Host != "Ann" || !row.Joinable {
+		t.Errorf("row = %+v, want 1 player hosted by Ann and joinable", *row)
+	}
+
+	// Somebody found it in the list and walked in.
+	second := dial(t, base, pubCode, "Bob", "")
+	second.await(t, 0)
+	settle(t, []*player{pub, second})
+	act(t, []*player{pub, second}, 0, room.ClientMsg{Type: "start"})
+
+	// Dealt: it should stop being advertised.
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if !slices.Contains(listedCodes(listRooms(t, base)), pubCode) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("room %s still listed after dealing", pubCode)
+}
+
+func TestRoomsDefaultToPublic(t *testing.T) {
+	base, _ := newTestServer(t)
+
+	// An empty POST is what a client that doesn't care sends.
+	resp, err := http.Post(base+"/api/rooms", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Code   string `json:"code"`
+		Public bool   `json:"public"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Public {
+		t.Error("a room created with no stated visibility should be public")
+	}
+
+	p := dial(t, base, out.Code, "Ann", "")
+	p.await(t, 0)
+	waitUntil(t, func() bool {
+		return slices.Contains(listedCodes(listRooms(t, base)), out.Code)
+	}, "default room to be listed")
+}
+
+func waitUntil(t *testing.T, cond func() bool, what string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
 }
 
 func createRoom(t *testing.T, base string) string {

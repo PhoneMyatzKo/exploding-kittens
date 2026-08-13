@@ -88,7 +88,7 @@ type harness struct {
 
 func newHarness(t *testing.T, n int) *harness {
 	t.Helper()
-	h := &harness{room: newRoom("TEST")}
+	h := &harness{room: newRoom("TEST", true)}
 	t.Cleanup(h.room.close)
 	for i := 0; i < n; i++ {
 		rec := &recorder{}
@@ -210,7 +210,7 @@ func TestTooFewPlayersCannotStart(t *testing.T) {
 }
 
 func TestReconnectRestoresTheSameSeatAndHand(t *testing.T) {
-	h := &harness{room: newRoom("TEST")}
+	h := &harness{room: newRoom("TEST", true)}
 	t.Cleanup(h.room.close)
 
 	recA, recB := &recorder{}, &recorder{}
