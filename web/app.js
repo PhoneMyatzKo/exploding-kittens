@@ -65,6 +65,7 @@ const app = {
   me: "",              // our player id
   code: "",
   name: "",
+  game: "",            // catalogue slug chosen on the menu, or learnt from a room
   selected: new Set(), // card ids picked out of our hand
   coverHand: false,    // hand shown face-down, for nosy neighbours
   peeked: new Set(),   // cards turned back over while covered
@@ -352,7 +353,7 @@ const SPEAKER_SVG = `
   </svg>`;
 
 function mountMuteButtons() {
-  for (const slot of ["sound-home", "sound-lobby", "sound-table"]) {
+  for (const slot of ["sound-menu", "sound-home", "sound-lobby", "sound-table"]) {
     const host = $(slot);
     if (!host) continue;
     const b = document.createElement("button");
@@ -495,8 +496,123 @@ function leaveRoom() {
   $("conn-warning").hidden = true;
   // Otherwise a refresh would walk straight back into the room just left.
   history.replaceState(null, "", location.pathname);
-  showHome();
+  // Back to the front page, not to one game's room screen: the button says
+  // "menu", and after leaving a table the next choice really is which game.
+  showMenu();
   syncSound(); // app.view is null again, so this returns to the title track
+}
+
+// ─────────────────────────── the game menu ───────────────────────────
+
+// The catalogue comes from the server so the list of games is written down once,
+// the same bargain the avatar picker makes. Until it arrives the menu says so
+// rather than showing an empty page that looks broken.
+const catalogueOfGames = { list: [], loaded: false };
+
+async function loadGames() {
+  try {
+    const res = await fetch("/api/games");
+    if (!res.ok) throw new Error("server said no");
+    catalogueOfGames.list = (await res.json()).games || [];
+    catalogueOfGames.loaded = true;
+  } catch {
+    $("menu-status").textContent =
+      "Couldn't reach the server. Is it still running?";
+    return;
+  }
+  renderGameList();
+  // A deep link may already have chosen for us before this landed.
+  if (app.game) applyGameChrome(app.game);
+}
+
+function gameInfo(slug) {
+  return catalogueOfGames.list.find((g) => g.slug === slug) || null;
+}
+
+function renderGameList() {
+  const games = catalogueOfGames.list;
+  $("menu-status").textContent = games.some((g) => g.playable)
+    ? ""
+    : "No games are playable on this server yet.";
+  $("menu-status").hidden = !$("menu-status").textContent;
+
+  $("game-list").replaceChildren(...games.map((g) => {
+    const li = document.createElement("li");
+    // A locked tile is a real button that says why, not a dead div: tapping it
+    // should answer the question it just raised.
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "game-tile" + (g.playable ? "" : " locked");
+    tile.dataset.slug = g.slug;
+
+    const emoji = document.createElement("span");
+    emoji.className = "game-emoji";
+    emoji.textContent = g.emoji || "🎲";
+
+    const text = document.createElement("span");
+    text.className = "game-text";
+    const name = document.createElement("b");
+    name.textContent = g.name;
+    const tag = document.createElement("small");
+    // The player range is the thing somebody standing in a room with friends
+    // actually needs, so every tile carries it, built or not.
+    tag.textContent = `${g.tagline} · ${g.min}–${g.max} players`;
+    text.append(name, tag);
+
+    tile.append(emoji, text);
+    if (!g.playable) {
+      const soon = document.createElement("span");
+      soon.className = "soon";
+      soon.textContent = "Soon";
+      tile.append(soon);
+      // Deliberately not disabled: a disabled control cannot be focused or
+      // tapped, so it can never answer the question it raises. Same bargain as a
+      // blocked card in the hand — it refuses, and says why.
+      tile.onclick = () => toast(`${g.name} isn't built yet.`);
+    } else {
+      // A chevron so the one tile you can press looks pressable next to the ones
+      // you cannot — opacity alone reads as a rendering glitch.
+      const go = document.createElement("span");
+      go.className = "game-go";
+      go.textContent = "›";
+      go.setAttribute("aria-hidden", "true");
+      tile.append(go);
+      tile.onclick = () => chooseGame(g.slug);
+    }
+
+    li.append(tile);
+    return li;
+  }));
+}
+
+// chooseGame commits to a game and moves on to the room screen. The choice is
+// deliberately not remembered: the menu is the front page, and silently skipping
+// it would make the hub feel like it only has one game.
+function chooseGame(slug) {
+  app.game = slug;
+  applyGameChrome(slug);
+  showHome();
+}
+
+// applyGameChrome dresses the room screen as the chosen game, so the title is not
+// a lie once there is more than one.
+function applyGameChrome(slug) {
+  const g = gameInfo(slug);
+  if (!g) return;
+  $("home-logo").textContent = `${g.emoji} ${g.name}`;
+  $("home-tagline").textContent = `${g.tagline} ${g.min}–${g.max} players, one phone each.`;
+  document.title = g.name;
+}
+
+function showMenu() {
+  closeBrowser();
+  closeModal();
+  $("menu").hidden = false;
+  $("home").hidden = true;
+  $("lobby").hidden = true;
+  $("table").hidden = true;
+  $("nope-bar").hidden = true;
+  setTrack("intro");
 }
 
 // ─────────────────────── public lobby browser ───────────────────────
@@ -507,6 +623,7 @@ const REFRESH_MS = 4000;
 const browser = { timer: 0, open: false };
 
 function showBrowser() {
+  $("menu").hidden = true;
   $("home").hidden = true;
   $("lobby").hidden = true;
   $("table").hidden = true;
@@ -539,11 +656,18 @@ async function refreshBrowser() {
 }
 
 function renderRoomList(rooms) {
-  $("browser-status").textContent = rooms.length
-    ? `${rooms.length} room${rooms.length === 1 ? "" : "s"} waiting for players`
-    : "No public rooms right now. Create one and it will show up here for everybody else.";
+  // The listing spans every game on the server, but this client is dressed as
+  // one of them and only knows how to render that one — so it shows the rooms it
+  // could actually walk into, and says which game those are.
+  const mine = app.game ? rooms.filter((r) => r.game === app.game) : rooms;
+  const named = gameInfo(app.game);
+  const label = named ? named.name : "this game";
 
-  $("browser-list").replaceChildren(...rooms.map((r) => {
+  $("browser-status").textContent = mine.length
+    ? `${mine.length} ${label} room${mine.length === 1 ? "" : "s"} waiting for players`
+    : `No public ${label} rooms right now. Create one and it will show up here for everybody else.`;
+
+  $("browser-list").replaceChildren(...mine.map((r) => {
     const li = document.createElement("li");
 
     const info = document.createElement("div");
@@ -573,6 +697,7 @@ function renderRoomList(rooms) {
 
 function showHome(error) {
   closeBrowser();
+  $("menu").hidden = true;
   $("home").hidden = false;
   $("lobby").hidden = true;
   $("table").hidden = true;
@@ -589,6 +714,14 @@ function render() {
   if (!v) return;
   closeBrowser(); // a live room always wins the screen
 
+  // An invite link drops you into a room without passing the menu, so the room
+  // is where the client finds out which game it is rendering.
+  if (v.game && v.game !== app.game) {
+    app.game = v.game;
+    applyGameChrome(v.game);
+  }
+
+  $("menu").hidden = true;
   if (!v.started) {
     $("home").hidden = true;
     $("table").hidden = true;
@@ -1547,7 +1680,7 @@ $("create-btn").onclick = async () => {
     const res = await fetch("/api/rooms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ public: storedPublic() }),
+      body: JSON.stringify({ public: storedPublic(), game: app.game }),
     });
     if (!res.ok) throw new Error("server said no");
     const { code } = await res.json();
@@ -1581,6 +1714,7 @@ $("hand-cover").onclick = toggleCoverHand;
 $("target-cancel").onclick = () => { app.awaitingTarget = false; render(); };
 
 $("leave-btn").onclick = leaveRoom;
+$("home-back").onclick = () => showMenu();
 $("browse-btn").onclick = showBrowser;
 $("browser-refresh").onclick = refreshBrowser;
 $("browser-back").onclick = () => showHome();
@@ -1615,17 +1749,23 @@ document.addEventListener("keydown", (e) => {
 });
 
 mountMuteButtons();
+loadGames();
 loadAvatars();
 loadCardKinds();
 armAudio();  // must be installed before the first play() attempt below
 syncSound(); // the title screen is already up, so this starts the intro
 
-// A shared link (…/#ABCD) drops you straight into that room.
+// A shared link (…/#ABCD) drops you straight into that room, menu and all: the
+// person who sent it already chose the game, and the room will say which.
 const hash = location.hash.replace("#", "").toUpperCase();
 if (hash) {
   $("code-input").value = hash;
   if (storedName()) {
     app.name = storedName();
     connect(hash);
+  } else {
+    // No name stored, so we still need the room screen to ask for one — but the
+    // menu would be a detour, since the game is already decided.
+    showHome();
   }
 }

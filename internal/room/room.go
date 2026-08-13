@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"boardgame/kittens/internal/game"
+	"boardgame/kittens/internal/games/kittens/game"
 	"boardgame/kittens/internal/view"
 	"boardgame/kittens/static"
 )
@@ -69,12 +69,25 @@ type member struct {
 	Host      bool
 }
 
+// Options are the choices made when a room is created, before anybody has
+// joined. Grouped rather than passed as loose arguments because they are all
+// booleans and slugs that would be easy to swap by accident.
+type Options struct {
+	// Public lists the room in the lobby browser.
+	Public bool
+	// Game is the catalogue slug this table is playing. The room carries it
+	// without interpreting it: which games exist, and which are playable, is the
+	// server's business, not the table's.
+	Game string
+}
+
 // Room is one table. All fields below cmds are owned exclusively by run().
 type Room struct {
 	Code string
-	// Public lists the room in the lobby browser. Set once before run() starts and
-	// never written again, so reading it needs no synchronisation.
+	// Public and Game are set once before run() starts and never written again,
+	// so reading them needs no synchronisation.
 	Public bool
+	Game   string
 
 	cmds      chan command
 	done      chan struct{}
@@ -128,7 +141,10 @@ func (cmdSummary) isCommand()   {}
 // is waiting and how many — nothing about anyone's cards, because this is served
 // to people who are not in the room.
 type Summary struct {
-	Code     string   `json:"code"`
+	Code string `json:"code"`
+	// Game is the catalogue slug, so a listing that spans several games can say
+	// what each row is before you commit to tapping it.
+	Game     string   `json:"game"`
 	Host     string   `json:"host"`
 	Players  int      `json:"players"`
 	Capacity int      `json:"capacity"`
@@ -145,10 +161,11 @@ type joinResult struct {
 	Err      error
 }
 
-func newRoom(code string, public bool) *Room {
+func newRoom(code string, opts Options) *Room {
 	r := &Room{
 		Code:      code,
-		Public:    public,
+		Public:    opts.Public,
+		Game:      opts.Game,
 		cmds:      make(chan command, 32),
 		done:      make(chan struct{}),
 		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -592,9 +609,11 @@ func (r *Room) viewFor(id string) *view.View {
 		}
 		return view.For(r.Code, ms, r.state, id, cd, r.logbuf)
 	}()
-	// Visibility belongs to the room, not the game, so it is stamped on here
-	// rather than threaded through both view constructors.
+	// Visibility and which game this is belong to the room, not to the rules, so
+	// they are stamped on here rather than threaded through both view
+	// constructors.
 	v.Public = r.Public
+	v.Game = r.Game
 	return v
 }
 
@@ -684,6 +703,7 @@ func (r *Room) isReapable() bool {
 func (r *Room) summary() Summary {
 	s := Summary{
 		Code:     r.Code,
+		Game:     r.Game,
 		Capacity: game.MaxPlayers,
 		Public:   r.Public,
 		Players:  r.connectedCount(),

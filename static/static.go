@@ -18,7 +18,7 @@ import (
 // means adding its pattern here.
 //
 // The card scans are named one directory at a time rather than with a wildcard
-// across src/images. Each directory is one card's set of printed faces, and most
+// across src/games/kittens/images. Each directory is one card's set of printed faces, and most
 // of what sits in there is for cards this engine does not implement — the
 // Zombie, Imploding and Barking expansions all shipped their own, and taking
 // them along would be five megabytes of pictures nothing can ever ask for.
@@ -31,22 +31,22 @@ import (
 // Only background.jpeg, the card back, is served from the top level — hence the
 // narrower .jpeg pattern beside the per-card .jpg ones.
 //
-//go:embed src/images/background.jpeg
-//go:embed src/images/explode/*.jpg
-//go:embed src/images/defuse/*.jpg
-//go:embed src/images/nope/*.jpg
-//go:embed src/images/attack/*.jpg
-//go:embed src/images/skip/*.jpg
-//go:embed src/images/favor/*.jpg
-//go:embed src/images/shuffle/*.jpg
-//go:embed src/images/see-the-future/*.jpg
-//go:embed src/images/cat-card/*.jpg
-//go:embed src/avatars/*.png src/audio/*.mp3 src/video/*.mp4
+//go:embed src/games/kittens/images/background.jpeg
+//go:embed src/games/kittens/images/explode/*.jpg
+//go:embed src/games/kittens/images/defuse/*.jpg
+//go:embed src/games/kittens/images/nope/*.jpg
+//go:embed src/games/kittens/images/attack/*.jpg
+//go:embed src/games/kittens/images/skip/*.jpg
+//go:embed src/games/kittens/images/favor/*.jpg
+//go:embed src/games/kittens/images/shuffle/*.jpg
+//go:embed src/games/kittens/images/see-the-future/*.jpg
+//go:embed src/games/kittens/images/cat-card/*.jpg
+//go:embed src/avatars/*.png src/audio/*.mp3 src/games/kittens/video/*.mp4
 var assets embed.FS
 
 // CardArt is the card-face image set, rooted so that a request for
-// "defuse/Defuse-Via-Crate.jpg" resolves without the src/images prefix.
-func CardArt() fs.FS { return sub("src/images") }
+// "defuse/Defuse-Via-Crate.jpg" resolves without the src/games/kittens/images prefix.
+func CardArt() fs.FS { return sub("src/games/kittens/images") }
 
 // Avatars is the set of player portraits, rooted the same way.
 func Avatars() fs.FS { return sub("src/avatars") }
@@ -57,7 +57,7 @@ func Audio() fs.FS { return sub("src/audio") }
 
 // Video is the effects footage, rooted the same way. Optional in the same sense
 // as the audio: a missing explosion.mp4 costs the bang its picture, nothing else.
-func Video() fs.FS { return sub("src/video") }
+func Video() fs.FS { return sub("src/games/kittens/video") }
 
 // cardArtDirs maps a card's slug — the identifier the engine and the client both
 // use — to the directory holding the faces printed for it.
@@ -110,7 +110,7 @@ var cardArtVariants = sync.OnceValue(func() map[string][]string {
 	out := map[string][]string{}
 
 	for slug, dir := range cardArtDirs {
-		entries, err := fs.ReadDir(assets, "src/images/"+dir)
+		entries, err := fs.ReadDir(assets, "src/games/kittens/images/"+dir)
 		if err != nil {
 			continue // directory removed: those cards fall back to a glyph
 		}
@@ -127,7 +127,7 @@ var cardArtVariants = sync.OnceValue(func() map[string][]string {
 	}
 
 	for slug, path := range cardArtFiles {
-		if _, err := fs.Stat(assets, "src/images/"+path); err == nil {
+		if _, err := fs.Stat(assets, "src/games/kittens/images/"+path); err == nil {
 			out[slug] = []string{path}
 		}
 	}

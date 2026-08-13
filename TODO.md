@@ -22,10 +22,29 @@
 - ~~Create Room with Private or Public setting~~ — a Public/Private toggle on the
   home screen, public by default and remembered between sessions. The lobby shows
   which one you got, under the room code.
-- ~~Users can see public Room~~ — **🌍 Public lobby** on the menu lists joinable
-  public rooms with host, seat count and who's waiting; tap Join and you're in
-  without ever seeing a code. Only rooms you can actually enter are listed, so a
-  room disappears once it's dealt or full.
+- ~~Users can see public Room~~ — **🌍 Public lobby** lists joinable public rooms
+  with host, seat count and who's waiting; tap Join and you're in without ever
+  seeing a code. Only rooms you can actually enter are listed, so a room
+  disappears once it's dealt or full.
+
+- ~~Main menu listing every game, chosen before anything else~~ — the front page
+  is now a picker. Exploding Kittens is playable; UNO and UNO No Mercy are shown
+  locked with a "soon" badge rather than hidden, because an empty-looking hub
+  reads as broken. The catalogue is served from `/api/games`, so the list is
+  written down once in `internal/games` rather than again in JavaScript. Rooms
+  carry a `game` slug from creation through to the client's view, unbuilt games
+  are refused at `POST /api/rooms`, and an invite link still goes straight to the
+  table — the sender already chose the game.
+
+- ~~Move each game's files into a folder of its own~~ — `internal/games/kittens/`
+  and `static/src/games/kittens/`. What stayed at the root is what a second game
+  would share: the transport, the room loop, the portraits, the audio. The card
+  art is served through a rooted FS, so the `/cards/…` URLs did not change.
+
+- ~~Browser tests back in the repo~~ — `web/testing/`, six scripts driving real
+  Chromium. They had been living in a scratch directory and were lost between
+  sessions, which meant every UI change was unverifiable. Not part of `go test`:
+  they need a running server.
 
 ## Ideas not started
 
@@ -64,26 +83,44 @@ redaction. Those are the pieces a multi-game core needs, and they exist.
 - `actForAbsentPlayer` picks kitten moves → `AutoMove(state, playerID)`
 - `game.MaxPlayers` and `static.HasAvatar` reach into game-specific packages
 
+### What is kitten-shaped in `internal/view`
+
+Not just the room. `view.View` imports `game` directly and carries
+`KittensLeft`, `MustPlace`, `MustGive`, `CanNope` and a `Pending` with a Nope
+count. **Only the envelope is generic** — `Code`, `Seats`, `Log`, `Seq`,
+`Connected`, `Host`, `Game`, `Public`. So `internal/view` splits into a shared
+shell plus a per-game payload; it does not get shared whole. Reading it as
+"never fork view" would end with UNO's fields bolted onto this struct.
+
 ### Split
 
-Share `internal/game`, `internal/ws`, `internal/view`, `static` — never fork
-them. `internal/room` (675 lines) is the only real duplicate. The v2 kittens
+Share `internal/ws`, `static`, and the *shell* of `internal/view` — never fork
+them. `internal/room` (748 lines) is the only real duplicate. The v2 kittens
 "game" is a thin adapter over the existing engine, not a rewrite of it.
 
-    internal/room/          v1, frozen once core exists
-    internal/core/          v2 generic room loop, registry, deadlines
-    internal/games/kittens/ adapter wrapping game.Apply + view.For
-    internal/hub/           accounts, entitlements, browse — HTTP + DB only
+    internal/room/                v1, frozen once core exists
+    internal/core/                v2 generic room loop, registry, deadlines
+    internal/games/kittens/       adapter wrapping game.Apply + view.For
+    internal/games/kittens/game/  the rules, untouched by any of this
+    internal/hub/                 accounts, entitlements, browse — HTTP + DB only
 
 Serve `/ws` + `/` from v1 and `/v2/ws` + `/v2/` from v2 out of the same binary.
 
 ### Two changes that are cheap now and painful later
 
 - **Serializable state.** `State.rng *rand.Rand` is the only field in `State`
-  that won't marshal; everything else is already plain data. Replace it with a
-  seed plus a draw counter. That one change unblocks snapshot-on-shutdown,
-  running more than one server process, and dumping exact state from a bug
-  report. Today a deploy kills every live game.
+  that won't marshal. But this is bigger than swapping a field: the rng is also
+  consumed by `fullDeck` picking card faces, three shuffles in setup, the
+  Shuffle card, the cat-pair steal and the starting player — and `rng.Shuffle`
+  eats a variable number of values, so a seed plus a *draw counter* cannot
+  reproduce it. It needs a counter-based generator (`hash(seed, n)`) with our
+  own Fisher-Yates pulling from it; then seed + n really is the whole state.
+  Still cheap, but it is "replace the randomness layer", not "replace a field".
+
+  What it buys: snapshot-on-shutdown, and exact reproduction from a bug report.
+  It does **not** buy running more than one server process — that needs room
+  ownership and routing, which is a separate and larger problem. Today a deploy
+  kills every live game.
 - **Identity before the room.** Right now the room mints the token and the seat
   is anonymous. With login, the user exists first and must be verified before
   the socket upgrade. Keep seat IDs room-scoped (`p1`, `p2`) and map
@@ -103,26 +140,46 @@ Serve `/ws` + `/` from v1 and `/v2/ws` + `/v2/` from v2 out of the same binary.
 
 ### Order
 
-1. Add `Game string` to `view.View` so the client can pick a renderer per room.
-2. Replace `State.rng` with seed + counter.
-3. Pull the room test scenarios (`room_test.go`, `e2e_test.go` — reconnect,
-   token reclaim, host transfer, idle takeover) behind an interface and make v1
-   pass them unchanged. This is the conformance suite; if v2 passes the same
-   cases the cutover is a non-event.
-4. Auth, accounts, `userID → seatID` mapping in the room layer.
-5. `internal/core` + kittens adapter, green against the same suite.
-6. React client. Shell (ws, reconnect, lobby, log, audio, mute — roughly
+Done already, ahead of the rest:
+
+- ~~`Game string` on `view.View`~~, plus the slug through `POST /api/rooms`,
+  `room.Options`, `Summary` and the menu. Unbuilt games are refused at the door.
+- ~~Per-game folders~~ (`internal/games/kittens/`, `static/src/games/kittens/`).
+- ~~Browser tests in the repo~~ (`web/testing/`), which the rest of this depends
+  on more than it looks — see the warning below.
+
+Then:
+
+1. **Conformance suite first.** Pull the room scenarios (`room_test.go`,
+   `e2e_test.go` — reconnect, token reclaim, host transfer, idle takeover)
+   behind an interface and make v1 pass them unchanged. This was third; it
+   belongs first. It is pure test refactoring, touches no production behaviour,
+   and every step after it is safer once it exists. If v2 passes the same cases
+   the cutover is a non-event.
+2. Replace `State.rng` with a counter-based generator (see above — this is the
+   randomness layer, not one field).
+3. Auth, accounts, `userID → seatID` mapping in the room layer.
+4. `internal/core` + kittens adapter, green against the same suite.
+5. React client. Shell (ws, reconnect, lobby, log, audio, mute — roughly
    `app.js` 140–500, none of it mentions cards) split from per-game renderers
    from the first commit. Vite → `dist/` → `//go:embed all:dist` keeps the
    single-executable property; flip `immutable` onto hashed assets and leave
    `noCache` on `index.html` only.
-7. Point new rooms at v2, let v1 drain, delete it, then rename the module off
+6. Point new rooms at v2, let v1 drain, delete it, then rename the module off
    `boardgame/kittens`.
-8. Hub and payments.
-9. UNO, then UNO No Mercy.
+7. Hub and payments.
+8. UNO, then UNO No Mercy.
 
 ### Watch out
 
+- **The client rewrite has the thinnest safety net here.** `web/app.js` is 1600+
+  lines and no Go test can see any of it. Every UI regression this project has
+  had was caught by looking at a real browser: a Nope bar covering the hand,
+  toasts burying a modal title, a new screen missing the shared background rule.
+  `web/testing/` is that net, and it has to grow to cover a flow *before* that
+  flow is rewritten in React — not after. Rewriting the client while also moving
+  rooms onto a new core is the one place the "never break v1 and v2 at the same
+  time" rule is likely to go.
 - **VFX/SFX in React.** The animation cues are driven by diffing log sequence
   numbers against the previous snapshot (`app.seenSeq`, `app.logSeq`), including
   the resync cases. That logic is correct and already debugged — keep it as a

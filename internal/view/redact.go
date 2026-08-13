@@ -6,7 +6,7 @@
 // else's hand as a count, and the draw pile as a count — never its order.
 package view
 
-import "boardgame/kittens/internal/game"
+import "boardgame/kittens/internal/games/kittens/game"
 
 // Membership is the connection-level information the room layer owns; the game
 // engine knows nothing about sockets or who is hosting.
@@ -104,8 +104,11 @@ type View struct {
 	WinnerID       string     `json:"winnerId,omitempty"`
 
 	// Public is the room's visibility, so the lobby can say whether the room is
-	// advertised. Filled in by the room, which owns that fact.
-	Public bool `json:"public"`
+	// advertised. Game is the catalogue slug, which tells the client which
+	// renderer this table needs. Both are filled in by the room, which owns those
+	// facts; the rules know nothing about either.
+	Public bool   `json:"public"`
+	Game   string `json:"game"`
 
 	Log []Entry `json:"log"`
 }

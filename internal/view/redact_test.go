@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"boardgame/kittens/internal/game"
+	"boardgame/kittens/internal/games/kittens/game"
 )
 
 // cardIDRe finds the numeric card IDs in a serialised view. Seat and player IDs
