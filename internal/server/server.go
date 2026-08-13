@@ -9,7 +9,8 @@ import (
 	"log"
 	"net/http"
 
-	"boardgame/kittens/internal/game"
+	"boardgame/kittens/internal/games"
+	"boardgame/kittens/internal/games/kittens/game"
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/ws"
 	"boardgame/kittens/static"
@@ -59,22 +60,46 @@ func New(mgr *room.Manager) http.Handler {
 		writeJSON(w, http.StatusOK, map[string][]kind{"demandable": out})
 	})
 
+	// The menu is built from this, so which games exist is written down once, in
+	// the catalogue, rather than again in JavaScript.
+	mux.HandleFunc("GET /api/games", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string][]games.Info{"games": games.All()})
+	})
+
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		// Public unless the body says otherwise, so an empty POST still behaves
 		// like the button most people press.
 		body := struct {
-			Public *bool `json:"public"`
+			Public *bool  `json:"public"`
+			Game   string `json:"game"`
 		}{}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
 		public := body.Public == nil || *body.Public
 
-		rm := mgr.Create(public)
+		// Kittens unless asked otherwise, so a client that predates the menu still
+		// gets a game rather than an error.
+		slug := body.Game
+		if slug == "" {
+			slug = games.Kittens
+		}
+		// An announced-but-unbuilt game is refused here rather than in the room:
+		// nothing downstream knows how to deal a table it cannot name.
+		if !games.Playable(slug) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "that game is not playable on this server yet",
+			})
+			return
+		}
+
+		rm := mgr.Create(room.Options{Public: public, Game: slug})
 		visibility := "private"
 		if public {
 			visibility = "public"
 		}
-		log.Printf("room %s created (%s)", rm.Code, visibility)
-		writeJSON(w, http.StatusOK, map[string]any{"code": rm.Code, "public": public})
+		log.Printf("room %s created (%s, %s)", rm.Code, slug, visibility)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"code": rm.Code, "public": public, "game": slug,
+		})
 	})
 
 	// The lobby browser. Only rooms somebody could actually join are listed.

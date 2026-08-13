@@ -10,15 +10,31 @@
 </head>
 <body>
 
+<!-- ───────────────────────────── menu ───────────────────────────── -->
+<!-- The landing screen. One game is playable today; the others are shown
+     locked rather than hidden, because an empty hub reads as broken and
+     "coming soon" is information. -->
+<section id="menu" class="screen">
+  <div class="panel">
+    <span id="sound-menu" class="sound-corner"></span>
+
+    <h1 class="logo">🎲 Board<br>Games</h1>
+    <p class="tagline">Pick a game. Everybody plays from their own phone.</p>
+
+    <p id="menu-status" class="muted">Loading games…</p>
+    <ul id="game-list" class="game-list"></ul>
+  </div>
+</section>
+
 <!-- ───────────────────────────── home ───────────────────────────── -->
-<section id="home" class="screen">
+<section id="home" class="screen" hidden>
   <div class="panel">
     <!-- Filled by mountMuteButtons(); the markup lives in JS so the icon is
-         only written once for the two places it appears. -->
+         only written once for the places it appears. -->
     <span id="sound-home" class="sound-corner"></span>
 
-    <h1 class="logo">💥 Exploding<br>Kittens</h1>
-    <p class="tagline">A party game for 2–5 people, one phone each.</p>
+    <h1 id="home-logo" class="logo">💥 Exploding<br>Kittens</h1>
+    <p id="home-tagline" class="tagline">A party game for 2–5 people, one phone each.</p>
 
     <label class="field">
       <span>Your name</span>
@@ -51,6 +67,10 @@
     <button id="browse-btn" class="btn big">🌍 Public lobby</button>
 
     <p id="home-error" class="error" hidden></p>
+
+    <div class="lobby-actions">
+      <button id="home-back" class="btn ghost small">← All games</button>
+    </div>
   </div>
 </section>
 

@@ -36,11 +36,15 @@ The client is embedded in the binary, so `kittens.exe` is the only file you need
 
 ## Playing
 
-1. Someone clicks **Create a room** and reads out the code (or shares the invite
-   link, which drops people straight in).
-2. Everyone else types the code and joins — or opens **🌍 Public lobby** and
+1. Pick **Exploding Kittens** from the menu. It is the only game built so far;
+   the others are listed with a *soon* badge rather than hidden, so the front
+   page says what this server does and does not have.
+2. Someone clicks **Create a room** and reads out the code (or shares the invite
+   link, which drops people straight in — past the menu, since the game is
+   already decided).
+3. Everyone else types the code and joins — or opens **🌍 Public lobby** and
    picks the room out of the list, no code needed.
-3. The host clicks **Deal the cards**.
+4. The host clicks **Deal the cards**.
 
 ### Public and private rooms
 
@@ -108,16 +112,51 @@ internal/server   HTTP routes and static client
 internal/ws       WebSocket read/write pumps
 internal/room     one goroutine per table; owns all mutable state
 internal/view     redaction: turns the game into a per-player payload
-internal/game     the rules, as a pure function
+internal/games/
+  kittens/game    the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
-static/           card scans (/cards), portraits (/avatars), music (/audio),
-                  effects footage (/video)
+web/testing/      Playwright checks that drive the real client (not in go test)
+static/           portraits (/avatars), music (/audio), and per-game media:
+                  card scans (/cards), effects footage (/video)
 ```
+
+Anything specific to one game lives under a folder named for it —
+`internal/games/kittens/` and `static/src/games/kittens/`. Everything else is
+the part a second game would share: the transport, the room loop, the portraits.
+That split is a filing decision, not an abstraction: there is exactly one game
+today, and `internal/room` is still written around this one's phases. See
+"Direction: multi-game core" in `TODO.md` for what would have to change.
+
+## The game menu
+
+`internal/games` is the catalogue: which games this server hosts, and which of
+them are actually built. It is data and nothing else — a game's rules live under
+its own directory, and the catalogue only knows enough to put a tile on the front
+page and to check a slug at room creation.
+
+The client builds the menu from `GET /api/games`, the same bargain the avatar
+picker makes: the list is written down once, in Go, rather than again in
+JavaScript. Adding an announced game is one struct literal.
+
+Announced-but-unbuilt games are shown locked rather than hidden. An empty-looking
+hub reads as broken, and "coming soon" is information. The tile is a real button,
+not a disabled one, so tapping it can say why — a disabled control cannot be
+focused or tapped, so it could never answer the question it raises. The lock is
+enforced at `POST /api/rooms`, which refuses any slug that is not playable; the
+greyed-out tile is a courtesy, the endpoint is the door.
+
+A room's game travels with it: `room.Options` at creation, `Summary.Game` in the
+lobby listing, and `view.View.Game` in every state the client receives. That last
+one is what lets an invite link skip the menu — the room tells the client which
+game it is, so the sender's choice is the one that counts.
 
 ## Card faces
 
-`static/src/images` holds one directory per card — `defuse/`, `nope/`,
-`see-the-future/` — and each directory is that card's set of printed faces.
+`static/src/games/kittens/images` holds one directory per card — `defuse/`,
+`nope/`, `see-the-future/` — and each directory is that card's set of printed
+faces. It is served rooted, so the URLs stay `/cards/defuse/…` regardless of
+where the files sit on disk.
+
 There are far more faces than copies: eighteen Defuses are printed, six are in
 the deck, so **every deal samples which ones the table sees**. Two Defuses in
 one hand are two different Defuses, the way the printed deck works.
@@ -133,8 +172,8 @@ and everybody at the table is looking at the same picture. Cards with no face
 available fall back to the emoji glyph in `web/app.js`, so the art set can stay
 incomplete without anything breaking.
 
-Loose `.jpg` files at the top of `static/src/images` are cards from expansions
-this engine does not implement. They are deliberately left out of the binary —
+Loose `.jpg` files at the top of `static/src/games/kittens/images` are cards from
+expansions this engine does not implement. They are deliberately left out of the binary —
 only `background.jpeg`, the card back, is served from that level.
 
 ## Portraits
@@ -178,7 +217,7 @@ out of the game with them.
 ## Cards and the deck back
 
 Cards are 3:4, sized off `--card-w`, and both the draw pile and a face-down card
-in your own hand wear `static/src/images/background.jpeg` cropped to that ratio.
+in your own hand wear `static/src/games/kittens/images/background.jpeg` cropped to that ratio.
 The pile's "Draw" label rides on a scrim tight to the bottom edge so it does not
 sit over the wordmark.
 
@@ -233,7 +272,7 @@ noise is not.
 
 ## Effects
 
-`static/src/video/explosion.mp4` plays over the whole table when somebody draws
+`static/src/games/kittens/video/explosion.mp4` plays over the whole table when somebody draws
 an Exploding Kitten. It was shot on black, so the client blends it with `screen`
 and only the fire lands — the table still reads through it.
 
@@ -294,7 +333,7 @@ everyone else's as a count, and the draw pile as a count — never its order. Th
 property is enforced by a test that serialises thousands of game states and
 fails if any card ID reaches a player who shouldn't see it.
 
-The rules in `internal/game` know nothing about JSON, sockets or players'
+The rules in `internal/games/kittens/game` know nothing about JSON, sockets or players'
 connections, which is why the interesting bugs are catchable with `go test`.
 
 ## Tests

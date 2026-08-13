@@ -1,0 +1,18 @@
+{
+  "name": "kittens-browser-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright checks that drive the real Exploding Kittens client in Chromium.",
+  "type": "module",
+  "scripts": {
+    "test": "node run.js",
+    "smoke": "node smoke.js",
+    "play": "node play.js",
+    "log": "node logtest.js",
+    "selection": "node selection.js",
+    "lobby": "node publiclobby.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

@@ -22,7 +22,7 @@ func NewManager() *Manager {
 
 // Create allocates a room with a fresh, unused code. A public room is listed by
 // List; a private one is reachable only by its code.
-func (m *Manager) Create(public bool) *Room {
+func (m *Manager) Create(opts Options) *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for {
@@ -30,7 +30,7 @@ func (m *Manager) Create(public bool) *Room {
 		if _, taken := m.rooms[code]; taken {
 			continue
 		}
-		r := newRoom(code, public)
+		r := newRoom(code, opts)
 		m.rooms[code] = r
 		return r
 	}

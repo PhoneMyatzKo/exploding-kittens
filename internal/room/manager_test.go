@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"boardgame/kittens/internal/game"
+	"boardgame/kittens/internal/games/kittens/game"
 )
 
 // waitFor polls until cond holds, since room work happens on its own goroutine.
@@ -56,8 +56,8 @@ func TestListOnlyShowsPublicRooms(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	pub := m.Create(true)
-	priv := m.Create(false)
+	pub := m.Create(Options{Public: true, Game: "kittens"})
+	priv := m.Create(Options{Public: false, Game: "kittens"})
 	joinN(t, pub, 1)
 	joinN(t, priv, 1)
 
@@ -75,7 +75,7 @@ func TestListHidesEmptyRooms(t *testing.T) {
 	t.Cleanup(m.Shutdown)
 
 	// Created but nobody has connected yet: there is no host to join.
-	empty := m.Create(true)
+	empty := m.Create(Options{Public: true, Game: "kittens"})
 	if codes := codesOf(m.List()); contains(codes, empty.Code) {
 		t.Errorf("an empty room was offered for joining: %v", codes)
 	}
@@ -90,7 +90,7 @@ func TestListHidesFullRooms(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	full := m.Create(true)
+	full := m.Create(Options{Public: true, Game: "kittens"})
 	joinN(t, full, game.MaxPlayers)
 
 	if codes := codesOf(m.List()); contains(codes, full.Code) {
@@ -102,7 +102,7 @@ func TestListHidesGamesInProgress(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	r := m.Create(true)
+	r := m.Create(Options{Public: true, Game: "kittens"})
 	recs := joinN(t, r, 2)
 	if codes := codesOf(m.List()); !contains(codes, r.Code) {
 		t.Fatalf("room not listed before dealing: %v", codes)
@@ -124,7 +124,7 @@ func TestSummaryReportsWhoIsWaiting(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	r := m.Create(true)
+	r := m.Create(Options{Public: true, Game: "kittens"})
 	joinN(t, r, 3)
 
 	list := m.List()
@@ -155,7 +155,7 @@ func TestListHidesRoomsEverybodyLeft(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	r := m.Create(true)
+	r := m.Create(Options{Public: true, Game: "kittens"})
 	rec := &recorder{}
 	id, _, err := r.Join("", "Solo", rec)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestGetStillFindsPrivateRooms(t *testing.T) {
 	m := NewManager()
 	t.Cleanup(m.Shutdown)
 
-	priv := m.Create(false)
+	priv := m.Create(Options{Public: false, Game: "kittens"})
 	if _, err := m.Get(priv.Code); err != nil {
 		t.Errorf("a private room must still be reachable by code: %v", err)
 	}
