@@ -207,3 +207,276 @@ Then:
     done by reading the code rather than trusting this file. Keep the existing
     tests green at every commit — no step should require v1 and v2 to be broken
     at the same time.
+
+## Direction: the web client, per game
+
+UNO needs its own palette (`#f8d92b` yellow, `#ec2229` red, `#000000` black), its
+own music, SFX and VFX, and its own table layout. `web/app.js` is 1771 lines,
+`web/style.css` 742, `web/index.html` 285, and all three are single files written
+for one game. This section is how a second game gets added to them without
+tripling their length.
+
+It is scoped to the browser only. It is independent of the core work above and
+can be done first, because it touches no Go beyond one `go:embed` line.
+
+### What is already right
+
+More than it looks:
+
+- `internal/games/catalogue.go` already carries `uno` and `uno-no-mercy` with
+  `Playable: false`, and `/api/games` already serves them. The tiles exist.
+- `applyGameChrome(slug)` (`web/app.js:599`) already swaps the logo, tagline and
+  document title per game. It is the hook the rest of this hangs off.
+- `static/src/games/kittens/` already namespaces media per game, and the card art
+  is served through a rooted FS, so `static/src/games/uno/` needs no URL changes.
+- **The CSS is genuinely token-driven.** All 13 hex literals in `style.css` live
+  in the header comment (lines 5–6), `:root` (21–33) and the `.panel` paper
+  family (59–61). Not one component rule names a hue — they all read `--ink`,
+  `--muted`, `--line`, `--accent`, `--bg`. Retheming is therefore a token swap,
+  not a sweep.
+
+### What is kitten-shaped in the client
+
+- `index.html` — the whole `#table` section and every word of `#rules-panel`
+- `app.js` — `GLYPHS`, `artURL`, `TRACKS`, the SFX table, `renderHand`,
+  `renderSeats`, `renderDiscard`, the deck-risk readout, the Nope bar, the
+  cinema/VFX cues
+- `style.css` — `.deck`, `.discard`, `.hand`, `.card`, `.seats`, `.nope-bar`,
+  `.flash`, and the palette values themselves
+
+Everything else — menu, home, public-lobby browser, lobby, avatar picker, modal,
+toasts, socket, reconnect, token reclaim, storage, the mute engine — is already
+game-agnostic and must not be forked. That is roughly `app.js` 1–660.
+
+### Options considered
+
+**Fork the files** (`uno.html`, `uno.js`, `uno.css`, served as a second page).
+Fastest to ship and it cannot break Exploding Kittens, but it duplicates ~660
+lines of shell, so every lobby and reconnect bug then gets fixed twice, and going
+menu → UNO becomes a page load that drops the socket. Rejected: the duplicated
+part is exactly the part that took the longest to get right.
+
+**Branch inline** (`if (app.game === "uno") …` through the existing functions).
+No restructuring, but `app.js` goes past 3500 lines of two interleaved games, and
+UNO No Mercy makes it three. Rejected — this is the option that actually hurts,
+and it hurts later rather than now, which is why it is tempting.
+
+**Per-game ES modules, no build step** — chosen. `index.html` already loads
+`app.js` as `type="module"`, so `await import()` works natively today.
+
+**Vite + React/Svelte.** This is step 5 of the multi-game plan above and is not
+in conflict with the modules approach: the module boundary drawn here is the same
+seam React would need (`shell` vs `per-game renderer`), so doing it in vanilla
+first makes the React port a port rather than a redesign. Do not do both at once.
+
+### Layout
+
+    web/
+      index.html          shell markup only — menu, home, browser, lobby, modal, toasts
+      app.js              shell — socket, routing, storage, sound engine, mountGame()
+      core/               sound.js, ui.js, theme.js — shared helpers
+      games/
+        kittens/          index.js, table.html, rules.html, theme.css
+        uno/              index.js, table.html, rules.html, theme.css
+
+Each game module default-exports one small contract:
+
+    export default {
+      tracks: { intro: "/audio/uno/intro.mp3", … },
+      sfx:    { … },
+      async mount(root) { … },   // inject table.html, wire listeners
+      render(view)      { … },   // called on every server state
+      unmount()         { … },   // stop audio, clear timers, drop listeners
+    };
+
+and the shell loads it inside the existing `chooseGame()`:
+
+    const mod = (await import(`./games/${slug}/index.js`)).default;
+
+`unmount()` is not optional. Leaving a room and picking another game must stop
+the previous game's audio and kill its timers, or the second game plays over the
+first — the same class of bug the mute toggle exists to prevent.
+
+### Order
+
+1. ~~**Theme tokens first.**~~ Done. `--crimson`/`--gold`/`--paper`/`--grey` are
+   now `--brand`/`--accent`/`--surface`/`--muted-ink`, declared as channel
+   triples (`--brand-rgb: 130 10 18`) because most are also needed at partial
+   alpha; the solid forms are derived with `rgb(var(…))`, so each colour has one
+   source. Structural tokens (`--radius`, `--card-w`, `--card-h`) stayed in a
+   shared `:root`; the palettes are `:root` (Exploding Kittens, also the
+   fallback) and `:root[data-game="uno"]`. `setTheme()` in `app.js` sets the
+   attribute and rewrites `<meta name="theme-color">` by reading back the
+   computed `--bg`, so the value is still written down only in the stylesheet.
+
+   Verified with a 130-element probe page rendered in headless Chrome against the
+   old and new stylesheets, comparing every colour-bearing computed property:
+   byte-identical for Exploding Kittens. The same probe with `data-game="uno"`
+   repalettes 180 properties with no unresolved `var()`.
+
+   Four things the plan had wrong, worth knowing before step 2:
+
+   - **The attribute goes on `<html>`, not `<body>`.** The `html, body` rule
+     reads `--bg`, and the root element is what paints the overscroll gutter. On
+     `<body>` the palette would apply to the app but not to the rubber-band strip
+     behind it.
+   - **The shadow token had to split in two.** `--shadow-rgb` lifts an element
+     off the ground and becomes the yellow under UNO; `--scrim-rgb` darkens the
+     card scans so white labels survive on top of them and stays black in every
+     palette. One token could not do both — a yellow modal backdrop is not a
+     backdrop. Verified: under UNO the card-art and deck-strip gradients are
+     still `rgba(0,0,0,…)` while the card-lift and toast shadows are yellow.
+   - **The rename exposed four rules that named `--brand` for a role that is not
+     the brand.** `.btn.primary` and `.conn-warning` wanted "ink on the accent"
+     (`--accent-ink`); `.logo`, `.room-code` and the range thumb wanted the
+     surface family's `--ink`. They were indistinguishable while crimson happened
+     to be all three. Under UNO the old spelling gave red-on-yellow at 3.1:1.
+   - **`.error` needed a token of its own.** It was crimson-on-paper at 10.5:1;
+     `#ec2229` on white is 4.4:1 and fails AA. Hence `--danger`, which UNO sets
+     to `#c1121a` (6.1:1). This is the general shape of the problem: kittens'
+     brand is dark enough to double as ink, and UNO's is not.
+
+   Also folded in, since the hub is now what the landing screen is: the document
+   title and favicon in `index.html` are the hub's (Board Games, 🎲), and
+   `applyGameChrome()` overwrites both halves per game while `showMenu()` puts
+   them back.
+2. ~~**Extract the table.**~~ Done. `web/games/kittens/table.html` now carries the
+   table, the rules panel, the cinema layer and the Nope bar — all four, not just
+   the two the plan named, because the last two are Exploding Kittens mechanics
+   as much as the table is. `index.html` is down from 285 lines to 164 and holds
+   only the shell: menu, home, public lobby browser, lobby, modal, toasts,
+   connection warning, plus a `<div id="game-root">` to inject into.
+
+   `mountGame(slug)` fetches and injects; `unmountGame()` drops the markup *and*
+   the things still running against it (the countdown frame, the explosion plate,
+   the queued cinema, the `--nope-h` custom property). `wireGame()` binds the
+   controls inside the injected markup and runs per mount, because those bindings
+   can no longer sit in the module-load block at the bottom of `app.js`.
+
+   Verified with the full browser suite: 6 scripts, 53 checks, all passing, with
+   `play.js` reaching defuse, Nope, cat pairs, Favor and See the Future — so the
+   modals, the cinema and the Nope bar all work through injected DOM.
+
+   Three things worth knowing:
+
+   - **`render()` gates on the mount.** An invite link learns its game from the
+     room's own first state, so a socket message routinely arrives before the
+     table exists. The gate sits *before* the menu is hidden — the fetch is
+     same-origin and small, and leaving the menu up for it beats blanking the
+     screen. `mountGame()` calls `render()` back with the same state.
+   - **`web/embed.go` must stay an explicit list.** The plan said `//go:embed
+     all:.`; that is wrong now that `web/testing/node_modules` exists — a wildcard
+     would compile several thousand Playwright files into the server. It reads
+     `index.html app.js style.css games`.
+   - **`#modal` stayed in the shell**, including the `#modal-place` "bury it"
+     slider, which is Exploding Kittens' alone. The modal is generic chrome and
+     splitting the game-specific body out of it is step 3's job, not step 2's.
+
+   Also: `web/testing/lib.js` now honours a `CHROME` env var pointing at a system
+   browser, because `npx playwright install chromium` would not complete here.
+3. ~~**Split `app.js`.**~~ Done. 1771 lines became a 720-line shell, an 889-line
+   game and 697 lines of shared modules:
+
+       core/dom.js      $ and hide — the two lookups everything is written on
+       core/store.js    every localStorage key, still "ek:"-prefixed on purpose
+       core/sound.js    the audio engine; games register their own assets
+       core/toast.js    passing notices
+       core/modal.js    the one blocking prompt, with no game's content in it
+       core/feed.js     the log-sequence diffing and the play-by-play
+       core/cinema.js   the one-at-a-time flash player
+       app.js           socket, menu, name, browser, lobby, palette, mounting
+       games/kittens/index.js   the table, hand, Nope window, prompts, rules
+
+   `app.js` no longer contains the word "card". The game is reached only through
+   the contract documented at `mountGame()`, and reaches the shell only through
+   the `ctx` handed to `mount()` — which is deliberately all functions, so a game
+   cannot hold a copy of state the next server message replaces.
+
+   The whole suite passed on the first run of the split: 6 scripts, 53 checks,
+   with `play.js` hitting attack, cat pairs, defuse, draw, Favor, See the Future,
+   Nope, shuffle and skip.
+
+   Five things worth knowing:
+
+   - **The log-sequence diffing survived intact**, as `core/feed.js`, with the two
+     counters kept separate for the reason they always were: a bang may still be
+     playing when the next state lands, but the line describing it is written
+     immediately either way. `freshEvents()` returning `[]` on the first state of
+     a connection is what keeps a reconnect from replaying somebody else's whole
+     game at once.
+   - **`unmountGame()` is now exercised on every "back to menu".** Leaving a room
+     unmounts rather than merely hiding, because the game holds a round's worth of
+     state — a selection, a covered hand, a countdown — and none of it should
+     survive into the next room. `selection.js` already leaves, reloads, rejoins
+     and plays on, so the mount → unmount → remount path is covered for free. That
+     closes the gap step 2 left open.
+   - **`#modal-place` left the shell.** The modal now has two content slots that
+     take elements a game built, so the kitten-burying slider is constructed in
+     JS rather than sitting in `index.html`. `core/modal.js` has no idea what a
+     card is, which was the point.
+   - **Registering audio late needed a fix.** WebKit grants playback per element,
+     and a game registers its tracks at mount — usually *after* the tap that
+     unblocked audio. Anything registered late has therefore never been blessed,
+     so `register()` re-primes when a gesture has already been spent. Without it
+     the bang is silently refused on iOS while the intro plays fine.
+   - **The lobby's seat range comes from the catalogue now**, not from `n >= 2 &&
+     n <= 5`. That constant was one of the last two Exploding Kittens rules left
+     in the shell, and a game for ten would have been held to a game for five.
+   - **The other one was `hide("nope-bar")`.** The shell was hiding a game's
+     overlay by id, on two screens. That is now `render(v)` / `leaveTable()` on the
+     module: the shell decides which screen is up, the game decides what its own
+     screen is made of. "Does `app.js` name an id from a game's template?" is the
+     test for whether this split is real, and the answer is now no.
+
+   Still untested, as before the split and for the same reason: the three-cat
+   demand modal. `play.js` will exercise it the moment a trio turns up, but the
+   deal is random and one rarely does — see the note in `web/testing/README.md`
+   about why a check that almost never runs is worse than none.
+4. **UNO's own module**, once 1–3 are done and Exploding Kittens still passes
+   `web/testing/`. All three are done and it does, so this is the next step: a
+   `games/uno/` directory with a `table.html` and an `index.js` exporting the
+   shape `mountGame()` documents, plus the palette block that is already in
+   `style.css`. Nothing in the shell should need to change — if it does, that is
+   the finding, and it belongs in this file.
+
+### Watch out
+
+- **The UNO palette has three real contrast failures.** Exploding Kittens got
+  away with a token-only recolour because `#820a12` is dark (white on it is
+  10.5:1). UNO's red is bright:
+  - white on `#ec2229` is **4.4:1** — fails AA for body text. Either black ink on
+    red, or reserve red for fills and borders and never body copy.
+  - `#f8d92b` on `#ec2229` is **3.1:1** — the obvious yellow-on-red headline does
+    not pass. Large text only, if at all.
+  - `--grey #5f5d5c` on `#000000` is **3.2:1** — the muted token needs a lighter
+    value for UNO. It is the one that leaks everywhere (`.muted`, taglines, deck
+    counts), so it will look fine on the panels and fail on the ground.
+  - black on `#f8d92b` is 15:1, so yellow is the safe surface for text. Build the
+    UNO palette around that rather than around red.
+- ~~**Shadows disappear on black.**~~ Handled in step 1 by `--shadow-rgb` /
+  `--scrim-rgb`; UNO sets the first to the yellow and leaves the second black.
+- ~~**Three rgba literals sit outside the tokens.**~~ Now `rgb(var(--surface-rgb)
+  / .78)` on the deck count and `--accent-rgb` / `--grad-from-rgb` in the blast
+  ring. The blast is still a kittens VFX and should move to
+  `games/kittens/theme.css` in step 2 rather than staying in the shared file.
+- ~~**`web/embed.go` lists the three files explicitly.**~~ Now
+  `index.html app.js style.css games`. Explicitly *not* `all:.`: that would sweep
+  in `web/testing/node_modules`. A missing directory fails silently as a 404 at
+  runtime rather than as a build error, so check the network tab, not the build.
+- **The table teardown/remount path still has no check.** The existing scripts
+  cover menu, selection, public lobby and play, and they caught nothing in step 2
+  because they exercise one mount and never a second. `unmountGame()` is
+  effectively untested today — with one game it only ever runs on a switch that
+  cannot happen yet. It is the first thing to break in step 4, so write a check
+  that goes game → menu → game before trusting it.
+
+### Prompt to resume this
+
+    Read TODO.md, section "Direction: the web client, per game". I'm adding UNO
+    to the browser client. The shell (menu, home, browser, lobby, socket,
+    reconnect, storage, mute) is shared and must not be forked; the table, rules,
+    palette, audio and VFX are per game.
+
+    Work on step N. Confirm what's already done by reading web/ rather than
+    trusting this file. Exploding Kittens must still pass web/testing/ at every
+    commit, and step 1 must leave it looking pixel-identical.
