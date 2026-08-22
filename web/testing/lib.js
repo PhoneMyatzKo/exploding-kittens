@@ -79,7 +79,16 @@ export function report(title) {
 // ─────────────────────────────────────────────────────────── browser
 
 export async function launch() {
-  return chromium.launch({ headless: HEADLESS, slowMo: SLOWMO });
+  // CHROME points at a browser already on the machine, instead of the ~150MB one
+  // `npx playwright install` downloads — which some networks will not serve at
+  // all. Anything Chromium-based does: these checks only use standard DOM APIs
+  // and Playwright's own protocol, not a pinned build.
+  const exe = process.env.CHROME;
+  return chromium.launch({
+    headless: HEADLESS,
+    slowMo: SLOWMO,
+    ...(exe ? { executablePath: exe } : {}),
+  });
 }
 
 // Each player gets their own context, not just their own tab: localStorage holds

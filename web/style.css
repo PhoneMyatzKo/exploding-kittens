@@ -1,43 +1,33 @@
-/* Exploding Kittens — mobile-first, no build step.
+/* Board Games — mobile-first, no build step.
  *
- * The entire UI is drawn from five values and nothing else:
+ * One stylesheet, one palette per game. Nothing below the palette block names a
+ * hue: every component rule reads a semantic token (--bg, --ink, --muted,
+ * --line, --accent, --surface) and never learns which game is on screen. So a
+ * new game is a new palette block and nothing else — see TODO.md, "Direction:
+ * the web client, per game".
  *
- *   crimson  #820a12   gold  #fbc240   paper  #fdfeff   grey  #5f5d5c
- *   gradient #e72834 → #ffc942
+ * Each palette declares six colours as channel triples rather than hex, because
+ * most of them are also needed at partial alpha (the card-art scrims, the drop
+ * shadows, the blast ring). Channels give one source per colour, composed with
+ * rgb(… / a) where it is used, instead of the same hue spelled two ways.
  *
- * Depth comes from alpha compositing those over each other, never from new
- * hues — every literal below is annotated with the mix it stands for. The one
- * exception is black at low alpha for drop shadows and modal scrims, which are
- * shading rather than colour.
+ * Depth comes from alpha compositing those six over each other, never from new
+ * hues — every composited literal is annotated with the mix it stands for.
  *
  * Two surface families, each shipping its own --ink/--muted/--line so that the
  * component rules further down never need to know which one they are sitting
- * on. Crimson is the default (the app ground); .panel and friends switch to
- * paper. The palette forces this split: grey is unreadable on crimson (1.9:1)
- * but sits at 6.5:1 on paper.
+ * on. The ground family is the default (app background, topbar, handbar, seats);
+ * .panel and friends switch to the surface family. The split is forced by
+ * contrast, not taste: Exploding Kittens' --muted-ink is unreadable on crimson
+ * (1.9:1) but sits at 6.5:1 on paper.
+ *
+ * The palette is keyed off <html data-game>, set by applyGameChrome() in app.js.
+ * It has to be <html> rather than <body>: the `html` rule below reads --bg, and
+ * the root element is what paints the overscroll gutter.
  */
 
+/* Structural tokens — geometry, shared by every game. */
 :root {
-  --crimson: #820a12;
-  --gold: #fbc240;
-  --paper: #fdfeff;
-  --grey: #5f5d5c;
-  --grad: linear-gradient(135deg, #e72834, #ffc942);
-
-  /* Crimson family — the app ground, topbar, handbar, seats. */
-  --bg: var(--crimson);
-  --bg-soft: #8b1b23;          /* paper 7% over crimson */
-  --panel: #90252c;            /* paper 11% over crimson */
-  --line: #9d4046;             /* paper 22% over crimson */
-  --ink: var(--paper);         /* 10.5:1 on crimson */
-  --muted: #dbbabd;            /* paper 72% over crimson — 5.9:1 */
-
-  /* Gold carries every highlight: whose turn it is, the room code, selection. */
-  --accent: var(--gold);
-  --accent-ink: var(--crimson); /* 6.4:1 on gold */
-  --good: var(--gold);
-  --warn: var(--gold);
-
   --radius: 14px;
   /* Cards are 3:4, matching the printed deck and the art we cut for the back.
      Sized to show off the scans: every card carries a different one, so the face
@@ -47,8 +37,103 @@
   --card-h: calc(var(--card-w) * 4 / 3);
 }
 
-/* Paper family. Declaring the tokens on the container flips every descendant
-   that reads --ink/--muted/--line/--bg-soft, so the rules below stay generic. */
+/* ─────────────────────── palette: Exploding Kittens ───────────────────────
+   Bare :root, so it is also the fallback. A missing or unknown data-game has to
+   render in some palette rather than none, and an unstyled page reads as broken
+   in a way a wrongly-themed one does not. */
+
+:root {
+  --brand-rgb: 130 10 18;        /* #820a12 crimson */
+  --accent-rgb: 251 194 64;      /* #fbc240 gold */
+  --surface-rgb: 253 254 255;    /* #fdfeff paper */
+  --grad-from-rgb: 231 40 52;    /* #e72834 */
+  --grad-to-rgb: 255 201 66;     /* #ffc942 */
+  --muted-ink: #5f5d5c;          /* grey — muted text on the surface family */
+
+  /* Shadows and scrims are shading rather than colour, so they are the two
+     values that are allowed not to come out of the palette above. They are
+     split because they do different jobs: --shadow lifts an element off the
+     ground and a game on a dark ground may need it to be a glow instead, while
+     --scrim darkens photography so white text survives on top of it and must
+     stay black in every palette. */
+  --shadow-rgb: 0 0 0;
+  --scrim-rgb: 0 0 0;
+
+  --brand: rgb(var(--brand-rgb));
+  --surface: rgb(var(--surface-rgb));
+  --grad: linear-gradient(135deg, rgb(var(--grad-from-rgb)), rgb(var(--grad-to-rgb)));
+
+  /* Ground family — the app background, topbar, handbar, seats. */
+  --bg: var(--brand);
+  --bg-soft: #8b1b23;          /* surface 7% over brand */
+  --panel: #90252c;            /* surface 11% over brand */
+  --line: #9d4046;             /* surface 22% over brand */
+  --ink: var(--surface);       /* 10.5:1 on brand */
+  --muted: #dbbabd;            /* surface 72% over brand — 5.9:1 */
+
+  /* Gold carries every highlight: whose turn it is, the room code, selection. */
+  --accent: rgb(var(--accent-rgb));
+  --accent-ink: var(--brand);  /* 6.4:1 on gold */
+  --good: var(--accent);
+  --warn: var(--accent);
+  /* Errors, on the surface family. Gold cannot carry text on paper (1.7:1), so
+     they lean on the brand plus weight instead — which only works while the
+     brand is dark enough to read there. */
+  --danger: var(--brand);      /* 10.5:1 on surface */
+
+  /* Surface family — .panel and friends, below. */
+  --surface-soft: #f7f2f3;     /* brand 5% over surface */
+  --surface-line: #e7d2d4;     /* brand 18% over surface */
+  --surface-ink: var(--brand); /* 10.5:1 on surface */
+}
+
+/* ─────────────────────────────── palette: UNO ───────────────────────────────
+   Yellow #f8d92b, red #ec2229, black #000000.
+
+   Red is a fill and a border here, never ink. It is far brighter than kittens'
+   crimson, and the numbers rule out the obvious layouts: paper on #ec2229 is
+   4.4:1 (fails AA for body text) and yellow on #ec2229 is 3.1:1. Black on
+   #f8d92b is 15:1, so yellow is the surface that can carry text and the ground
+   is black. That is also how the printed deck works.
+
+   --shadow becomes the yellow: eleven rules lift an element with a drop shadow,
+   and every one of them is invisible on a black ground. --scrim stays black,
+   because its job is making white text readable over the card art. */
+
+:root[data-game="uno"] {
+  --brand-rgb: 236 34 41;        /* #ec2229 red */
+  --accent-rgb: 248 217 43;      /* #f8d92b yellow */
+  --surface-rgb: 253 254 255;    /* #fdfeff — UNO's cards are white too */
+  --grad-from-rgb: 236 34 41;    /* red → yellow, the deck's own sweep */
+  --grad-to-rgb: 248 217 43;
+  --muted-ink: #5f5d5c;          /* 6.6:1 on surface */
+
+  --shadow-rgb: var(--accent-rgb);
+  --scrim-rgb: 0 0 0;
+
+  /* Ground family — black, not red. */
+  --bg: #000000;
+  --bg-soft: #121212;          /* surface 7% over black */
+  --panel: #1c1c1c;            /* surface 11% over black */
+  --line: #383838;            /* surface 22% over black */
+  --ink: var(--surface);       /* 20.6:1 on black */
+  --muted: #8a8784;            /* surface 54% over black — 5.9:1 */
+
+  --accent-ink: #000000;       /* 15:1 on yellow */
+  /* Not --brand: #ec2229 on white is 4.4:1 and fails AA for body text. Darkened
+     until it passes, which is the whole reason --danger is not just the brand. */
+  --danger: #c1121a;           /* 6.1:1 on surface */
+
+  /* Surface family. */
+  --surface-soft: #f4f4f4;     /* black 5% over surface */
+  --surface-line: #d0d0d1;     /* black 18% over surface */
+  --surface-ink: #000000;      /* 20.6:1 on surface */
+}
+
+/* Surface family. Declaring the tokens on the container flips every descendant
+   that reads --ink/--muted/--line/--bg-soft, so the rules below stay generic.
+   The values come from whichever palette is in force; this rule only says which
+   elements switch families. */
 .panel,
 .modal-box,
 .log-panel,
@@ -56,11 +141,11 @@
 .toast,
 .nope-bar,
 .card {
-  --bg-soft: #f7f2f3;          /* crimson 5% over paper */
-  --panel: var(--paper);
-  --line: #e7d2d4;             /* crimson 18% over paper */
-  --ink: var(--crimson);       /* 10.5:1 on paper */
-  --muted: var(--grey);        /* 6.5:1 on paper */
+  --bg-soft: var(--surface-soft);
+  --panel: var(--surface);
+  --line: var(--surface-line);
+  --ink: var(--surface-ink);
+  --muted: var(--muted-ink);
   color: var(--ink);
 }
 
@@ -98,12 +183,12 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 /* Solid gold, not the gradient: paper text over the gradient's gold end is
    1.6:1, so anything carrying a label gets a flat fill it can be read on. */
-.btn.primary { background: var(--gold); border-color: var(--gold); color: var(--crimson); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.ghost { background: transparent; }
 .btn.small { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
 .btn.big { width: 100%; padding: 14px; font-size: 17px; }
 .btn.nope {
-  background: var(--crimson); border-color: var(--crimson); color: var(--paper);
+  background: var(--brand); border-color: var(--brand); color: var(--surface);
   font-size: 18px; letter-spacing: .06em; padding: 12px 26px;
 }
 
@@ -125,11 +210,11 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
   text-align: center;
 }
 
-.logo { margin: 0; font-size: 34px; line-height: 1.1; letter-spacing: -.02em; color: var(--crimson); }
+.logo { margin: 0; font-size: 34px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); }
 .tagline { margin: 0; color: var(--muted); font-size: 14px; }
 .muted { color: var(--muted); font-size: 14px; margin: 0; }
 /* Gold cannot carry text on paper (1.7:1), so errors lean on weight instead. */
-.error { color: var(--crimson); font-weight: 600; font-size: 14px; margin: 0; }
+.error { color: var(--danger); font-weight: 600; font-size: 14px; margin: 0; }
 
 .field { display: grid; gap: 6px; text-align: left; font-size: 13px; color: var(--muted); }
 input {
@@ -170,7 +255,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   transition: border-color .12s ease, background .12s ease;
 }
 .seg small { font-size: 10px; font-weight: 500; color: var(--muted); line-height: 1.25; }
-.seg.on { border-color: var(--gold); background: linear-gradient(var(--gold), var(--gold)) bottom / 100% 4px no-repeat, var(--bg-soft); }
+.seg.on { border-color: var(--accent); background: linear-gradient(var(--accent), var(--accent)) bottom / 100% 4px no-repeat, var(--bg-soft); }
 .seg.on small { color: var(--ink); }
 .seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
@@ -186,7 +271,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   border-radius: 12px; padding: 14px 14px; text-align: left;
   font: inherit; color: inherit; cursor: pointer;
 }
-.game-tile:hover { border-color: var(--gold); }
+.game-tile:hover { border-color: var(--accent); }
 .game-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 .game-emoji { font-size: 28px; line-height: 1; }
@@ -195,7 +280,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .game-text small { font-size: 12px; color: var(--muted); line-height: 1.35; }
 
 /* The one tile you can press is the one with a coloured edge and a chevron. */
-.game-tile:not(.locked) { border-left: 3px solid var(--gold); }
+.game-tile:not(.locked) { border-left: 3px solid var(--accent); }
 .game-go { flex: none; font-size: 22px; color: var(--muted); line-height: 1; }
 
 /* Locked tiles stay legible rather than being greyed into unreadability: the
@@ -232,8 +317,8 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    reads 6.4:1 over the band and 10.5:1 over the paper either side of it. */
 .room-code {
   margin: 0; font-size: 52px; font-weight: 800;
-  letter-spacing: .18em; color: var(--crimson);
-  background: linear-gradient(var(--gold), var(--gold)) bottom / 100% 34% no-repeat;
+  letter-spacing: .18em; color: var(--ink);
+  background: linear-gradient(var(--accent), var(--accent)) bottom / 100% 34% no-repeat;
 }
 
 /* ───────────────────────── avatar picker ─────────────────────────
@@ -254,7 +339,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 .avatar-art {
   width: 100%; aspect-ratio: 1; display: block; border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--line), 0 4px 10px rgba(0,0,0,.25);
+  box-shadow: 0 0 0 2px var(--line), 0 4px 10px rgb(var(--shadow-rgb) / .25);
   transition: transform .12s ease, box-shadow .12s ease, filter .15s ease;
 }
 .avatar-pick:hover:not(:disabled) .avatar-art { transform: translateY(-3px); }
@@ -263,7 +348,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   line-height: 1.2; overflow-wrap: anywhere;
 }
 
-.avatar-pick.mine .avatar-art { box-shadow: 0 0 0 3px var(--gold), 0 4px 10px rgba(0,0,0,.25); }
+.avatar-pick.mine .avatar-art { box-shadow: 0 0 0 3px var(--accent), 0 4px 10px rgb(var(--shadow-rgb) / .25); }
 .avatar-pick.mine .avatar-cap { color: var(--ink); }
 
 /* Taken: drained of colour, matching the button already being disabled. */
@@ -290,9 +375,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    luminance does not. */
 .dot {
   width: 9px; height: 9px; border-radius: 50%; flex: none;
-  background: var(--gold); box-shadow: 0 0 0 1px var(--crimson);
+  background: var(--accent); box-shadow: 0 0 0 1px var(--brand);
 }
-.dot.off { background: var(--grey); box-shadow: none; }
+.dot.off { background: var(--muted-ink); box-shadow: none; }
 .tag { margin-left: auto; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 
 /* ───────────────────────────── table ───────────────────────────── */
@@ -338,8 +423,8 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   position: relative; overflow: hidden;
   width: var(--card-w); aspect-ratio: 3 / 4;
   border-radius: var(--radius); cursor: pointer;
-  color: var(--paper); font: inherit; padding: 0;
-  background: url("/cards/background.jpeg") center / cover, var(--crimson);
+  color: var(--surface); font: inherit; padding: 0;
+  background: url("/cards/background.jpeg") center / cover, var(--brand);
   border: 2px solid var(--line);
   display: grid; align-content: end;
   transition: transform .1s ease, border-color .15s ease;
@@ -350,10 +435,10 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 /* Tight stops so the scrim sits under the wordmark rather than over it. */
 .deck-strip {
   display: grid; gap: 1px; padding: 14px 4px 5px;
-  background: linear-gradient(to top, rgba(0,0,0,.9) 26%, rgba(0,0,0,.55) 60%, transparent);
+  background: linear-gradient(to top, rgb(var(--scrim-rgb) / .9) 26%, rgb(var(--scrim-rgb) / .55) 60%, transparent);
 }
 .deck-label { font-weight: 800; font-size: 14px; }
-.deck-count { font-size: 11px; color: rgba(253,254,255,.78); } /* paper 78% on the scrim */
+.deck-count { font-size: 11px; color: rgb(var(--surface-rgb) / .78); } /* surface 78% on the scrim */
 
 .discard {
   width: var(--card-w); aspect-ratio: 3 / 4;
@@ -375,11 +460,11 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   width: var(--card-w); aspect-ratio: 3 / 4; flex: none;
   border-radius: var(--radius);
   border: 2px solid var(--line);
-  background: var(--paper);
+  background: var(--surface);
   cursor: pointer; padding: 6px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; text-align: center;
-  box-shadow: 0 6px 14px rgba(0,0,0,.3);
+  box-shadow: 0 6px 14px rgb(var(--shadow-rgb) / .3);
   transition: transform .14s ease, box-shadow .14s ease;
   font: inherit;
 }
@@ -401,12 +486,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .card.has-art .label {
   position: relative; align-self: stretch;
   padding: 10px 3px 3px;
-  color: var(--paper);
-  text-shadow: 0 1px 2px rgba(0,0,0,.5);
-  background: linear-gradient(to top, rgba(0,0,0,.88) 40%, transparent);
+  color: var(--surface);
+  text-shadow: 0 1px 2px rgb(var(--scrim-rgb) / .5);
+  background: linear-gradient(to top, rgb(var(--scrim-rgb) / .88) 40%, transparent);
 }
 .card.static { cursor: default; box-shadow: none; }
-.card.selected { transform: translateY(-16px); box-shadow: 0 0 0 3px var(--warn), 0 12px 24px rgba(0,0,0,.5); }
+.card.selected { transform: translateY(-16px); box-shadow: 0 0 0 3px var(--warn), 0 12px 24px rgb(var(--shadow-rgb) / .5); }
 .hand .card:hover:not(.selected):not(.blocked) { transform: translateY(-8px) rotate(-1deg); }
 .hand .card:active:not(.blocked) { transform: translateY(-4px) scale(.98); }
 
@@ -421,7 +506,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    the reveal, so it only runs on the card you actually turned over. */
 .card.hidden-face {
   padding: 0;
-  background: url("/cards/background.jpeg") center / cover, var(--crimson);
+  background: url("/cards/background.jpeg") center / cover, var(--brand);
 }
 .card.flipping { animation: flip-face .26s ease both; }
 @keyframes flip-face {
@@ -435,13 +520,13 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    do something, and solid crimson for the one that kills you. Cards with a
    scan show it instead and ignore all of this. */
 .card:not(.has-art):not(.hidden-face) {
-  background: var(--grad) top / 100% 9px no-repeat, var(--paper);
+  background: var(--grad) top / 100% 9px no-repeat, var(--surface);
 }
 .card[data-slug^="cat-"]:not(.has-art) {
-  background: linear-gradient(var(--gold), var(--gold)) top / 100% 9px no-repeat, var(--paper);
+  background: linear-gradient(var(--accent), var(--accent)) top / 100% 9px no-repeat, var(--surface);
 }
 .card[data-slug="exploding"]:not(.has-art) {
-  background: var(--crimson); color: var(--paper); border-color: var(--crimson);
+  background: var(--brand); color: var(--surface); border-color: var(--brand);
 }
 
 /* ─────────────────────── hand & actions ─────────────────────── */
@@ -461,7 +546,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 .actions { display: flex; align-items: center; gap: 12px; padding: 4px 14px 0; }
 .hint { color: var(--muted); font-size: 13px; }
-.hint.warn { color: var(--gold); font-weight: 600; }
+.hint.warn { color: var(--accent); font-weight: 600; }
 
 .target-row {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -476,7 +561,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .nope-bar {
   position: fixed; inset: auto 0 0; z-index: 40;
   background: var(--panel);
-  border-top: 3px solid var(--gold);
+  border-top: 3px solid var(--accent);
   padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
 }
 .nope-inner { max-width: 560px; margin: 0 auto; display: grid; gap: 10px; text-align: center; }
@@ -595,11 +680,11 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 .flash-glyph {
   font-size: clamp(80px, 30vw, 150px); line-height: 1;
-  filter: drop-shadow(0 8px 22px rgba(0,0,0,.6));
+  filter: drop-shadow(0 8px 22px rgb(var(--shadow-rgb) / .6));
 }
 .flash-text {
-  margin: 0; font-size: 19px; font-weight: 800; color: var(--paper);
-  text-shadow: 0 2px 10px rgba(0,0,0,.85);
+  margin: 0; font-size: 19px; font-weight: 800; color: var(--surface);
+  text-shadow: 0 2px 10px rgb(var(--scrim-rgb) / .85);
 }
 
 /* Anchored over the seat that exploded: no caption, because the name is right
@@ -638,7 +723,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .flash.exploded::before {
   content: ""; position: absolute; width: min(90vw, 460px); aspect-ratio: 1;
   border-radius: 50%; z-index: -1;
-  background: radial-gradient(circle, rgba(251,194,64,.55), rgba(231,40,52,.35) 45%, transparent 70%);
+  background: radial-gradient(circle, rgb(var(--accent-rgb) / .55), rgb(var(--grad-from-rgb) / .35) 45%, transparent 70%);
   animation: blast .9s ease-out both;
 }
 .flash.defused { animation-delay: 0s, .9s; }
@@ -675,7 +760,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 .modal {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(0,0,0,.6); backdrop-filter: blur(3px);
+  background: rgb(var(--scrim-rgb) / .6); backdrop-filter: blur(3px);
   display: grid; place-items: center; padding: 20px;
 }
 .modal-box {
@@ -693,7 +778,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .place-quick { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .place-slider { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
 /* accent-color keeps the native thumb and track inside the palette too. */
-.place-slider input { padding: 0; accent-color: var(--crimson); }
+.place-slider input { padding: 0; accent-color: var(--ink); }
 
 /* Sat in the empty band between the seats and the deck, so a burst of toasts
    never buries the turn banner or the other players' card counts. */
@@ -708,14 +793,14 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .toast {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 999px; padding: 9px 18px; font-size: 14px;
-  box-shadow: 0 8px 20px rgba(0,0,0,.45);
+  box-shadow: 0 8px 20px rgb(var(--shadow-rgb) / .45);
   animation: pop .25s ease;
 }
 @keyframes pop { from { opacity: 0; transform: translateY(-8px); } }
 
 .conn-warning {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 80;
-  background: var(--gold); color: var(--crimson); text-align: center;
+  background: var(--accent); color: var(--accent-ink); text-align: center;
   font-size: 13px; font-weight: 600; padding: 7px;
 }
 

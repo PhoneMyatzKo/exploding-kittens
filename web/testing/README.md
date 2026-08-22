@@ -25,12 +25,22 @@ npm install          # first time only
 node run.js
 ```
 
+`npm install` pulls the Playwright library; `npx playwright install chromium`
+fetches the browser it drives. If that download will not complete — it is ~150MB
+and some networks refuse it outright — point `CHROME` at a Chromium-based browser
+already installed and skip it:
+
+```bash
+CHROME=/usr/bin/google-chrome node run.js
+```
+
 Stop the server afterwards with
 `Get-Process kittens -ErrorAction SilentlyContinue | Stop-Process -Force`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `BASE` | `http://localhost:8099` | Server to drive |
+| `CHROME` | unset | Path to a browser already on the machine, instead of Playwright's own |
 | `HEADED` | unset | `1` shows the browsers |
 | `SLOWMO` | `0` | Milliseconds between actions, for watching |
 | `MOBILE` | unset | `1` runs `play.js` on a phone viewport |

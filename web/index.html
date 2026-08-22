@@ -3,9 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Both are the hub's rather than any one game's: the landing screen is the
+     menu. setTheme() in app.js rewrites theme-color, and applyGameChrome() the
+     title, once a game has been picked. -->
 <meta name="theme-color" content="#820a12">
-<title>Exploding Kittens</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>💥</text></svg>">
+<title>Board Games</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎲</text></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -117,159 +120,26 @@
   </div>
 </section>
 
-<!-- ───────────────────────────── table ───────────────────────────── -->
-<section id="table" class="screen table" hidden>
-  <header class="topbar">
-    <span id="table-code" class="pill"></span>
-    <span id="turn-banner" class="turn-banner"></span>
-    <span id="sound-table"></span>
-    <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
-  </header>
+<!-- ─────────────────────── the game itself ───────────────────────
+     Everything from here down used to be Exploding Kittens' table, rules panel,
+     cinema layer and Nope bar. It now lives in web/games/kittens/table.html and
+     is injected here by mountGame() in app.js, so this file carries only the
+     shell every game shares. A second game drops its own template in beside
+     that one. See TODO.md, "Direction: the web client, per game". -->
+<div id="game-root"></div>
 
-  <div id="seats" class="seats"></div>
-
-  <!-- Table and log sit side by side once there's width; stacked on a phone. -->
-  <div class="table-body">
-    <div class="center">
-      <div class="deck-stack">
-        <button id="deck" class="deck" type="button">
-          <span class="deck-strip">
-            <span class="deck-label">Draw</span>
-            <span id="deck-count" class="deck-count"></span>
-          </span>
-        </button>
-        <p id="deck-risk" class="deck-risk"></p>
-      </div>
-      <div id="discard" class="discard"></div>
-    </div>
-
-    <aside id="log-panel" class="log-panel">
-      <button id="log-collapse" class="log-head" aria-expanded="true"
-              aria-controls="log" title="Hide the log">
-        <strong>Play by play</strong>
-        <span id="log-caret" class="caret">▾</span>
-      </button>
-      <ol id="log" class="log" aria-live="polite"></ol>
-    </aside>
-  </div>
-
-  <div id="target-row" class="target-row" hidden>
-    <span class="target-label">Play on whom?</span>
-    <div id="target-buttons" class="target-buttons"></div>
-    <button id="target-cancel" class="btn ghost small">Cancel</button>
-  </div>
-
-  <footer class="handbar">
-    <div id="hand" class="hand"></div>
-    <div class="actions">
-      <button id="play-btn" class="btn primary" disabled>Play</button>
-      <button id="hand-cover" class="btn ghost small"></button>
-      <span id="hint" class="hint"></span>
-    </div>
-  </footer>
-</section>
-
-<!-- ───────────────────────── rules ───────────────────────── -->
-<aside id="rules-panel" class="rules-panel" hidden>
-  <div class="rules-head">
-    <strong>How to play</strong>
-    <button id="rules-close" class="btn ghost small">Close</button>
-  </div>
-  <div class="rules-body">
-    <p><b>Be the last cat standing.</b> Draw an Exploding Kitten without a Defuse
-      in hand and you are out of the game.</p>
-
-    <h3>The deal</h3>
-    <p>Everybody starts with 8 cards, exactly one of which is a Defuse. The deck
-      is then loaded with one fewer Exploding Kitten than there are players — so
-      somebody always survives, and it is never a draw.</p>
-
-    <h3>Your turn</h3>
-    <p>Play as many cards as you like, in any order, then <b>draw</b>. Drawing is
-      what ends your turn, and it is the only risky thing you do all turn.</p>
-
-    <h3>The cards</h3>
-    <dl class="rules-cards">
-      <dt>💥 Exploding Kitten</dt>
-      <dd>Drawn, never played. Defuse it or you are out, and your hand goes to
-        the discard pile with you.</dd>
-      <dt>✂️ Defuse</dt>
-      <dd>Used the instant you draw a Kitten, automatically. You then slide that
-        Kitten back into the deck wherever you like — top, bottom, anywhere —
-        and nobody sees where it went.</dd>
-      <dt>⏭️ Skip</dt>
-      <dd>End your turn immediately without drawing.</dd>
-      <dt>⚔️ Attack</dt>
-      <dd>End your turn without drawing, and the next player takes two turns.
-        Attack them back and the turns keep stacking.</dd>
-      <dt>🔀 Shuffle</dt>
-      <dd>Shuffle the deck. Useful right after somebody hides a Kitten.</dd>
-      <dt>🔮 See the Future</dt>
-      <dd>Look at the top three cards, privately, and put them back in the same
-        order.</dd>
-      <dt>🙏 Favor</dt>
-      <dd>Pick a player; they choose one card from their hand and give it to
-        you.</dd>
-      <dt>🌮 Two matching Cat Cards</dt>
-      <dd>Cat cards do nothing on their own. Play a matching pair to steal one
-        random card from a player of your choice.</dd>
-      <dt>🌮🌮🌮 Three matching Cat Cards</dt>
-      <dd>Name the card you want and take it from a player of your choice. The
-        whole table hears what you asked for. If they don't have one you get
-        nothing, and the three cats are gone.</dd>
-      <dt>🚫 Nope</dt>
-      <dd>Cancels the card somebody just played, from anyone's hand, at any time
-        — including out of turn. A Nope on a Nope un-cancels it. Nope cannot
-        stop a draw or an explosion.</dd>
-    </dl>
-
-    <h3>The Nope window</h3>
-    <p>Every card played sits on the table for twenty seconds before it takes
-      effect. That purple bar at the bottom is your chance to Nope it. The
-      countdown restarts whenever somebody adds another Nope to the pile.</p>
-
-    <h3>Reading the deck</h3>
-    <p>Under the draw pile is the chance that the next card off the top is a
-      Kitten. It climbs as the deck thins, and drops each time a player is
-      eliminated and their Kitten leaves the game with them.</p>
-  </div>
-</aside>
-
-<!-- Explosions and defuses, played over the table from the shared log. -->
-<div id="cinema" class="cinema" hidden aria-hidden="true"></div>
-
-<!-- ───────────────────────── nope window ───────────────────────── -->
-<div id="nope-bar" class="nope-bar" hidden>
-  <div class="nope-inner">
-    <p id="nope-text" class="nope-text"></p>
-    <div class="nope-timer"><i id="nope-fill"></i></div>
-    <div class="nope-actions">
-      <button id="nope-btn" class="btn nope" hidden>NOPE!</button>
-      <button id="pass-btn" class="btn ghost" hidden>Let it happen</button>
-    </div>
-  </div>
-</div>
-
-<!-- ───────────────────────────── modals ───────────────────────────── -->
+<!-- ─────────────────────────────── modal ───────────────────────────────
+     The one blocking prompt, shared by every game and driven by core/modal.js.
+     It carries no game's content: two empty slots are filled with elements the
+     game built. `cards` is a centred wrapping row, `extra` a plain column for a
+     game's own controls (the kitten-burying slider is one) and hidden while
+     unused, since .modal-box is a grid and an empty child still spends a gap. -->
 <div id="modal" class="modal" hidden>
   <div class="modal-box">
     <h2 id="modal-title"></h2>
     <p id="modal-body" class="muted"></p>
     <div id="modal-cards" class="modal-cards"></div>
-    <div id="modal-place" class="place" hidden>
-      <div class="place-quick">
-        <button class="btn small" data-place="top">Top</button>
-        <button class="btn small" data-place="second">2nd from top</button>
-        <button class="btn small" data-place="middle">Middle</button>
-        <button class="btn small" data-place="random">Random</button>
-        <button class="btn small" data-place="bottom">Bottom</button>
-      </div>
-      <label class="place-slider">
-        <input id="place-range" type="range" min="0" value="0">
-        <span id="place-readout"></span>
-      </label>
-      <button id="place-confirm" class="btn primary">Bury it</button>
-    </div>
+    <div id="modal-extra" hidden></div>
     <div class="modal-actions">
       <button id="modal-alt" class="btn" hidden></button>
       <button id="modal-ok" class="btn primary" hidden>OK</button>
