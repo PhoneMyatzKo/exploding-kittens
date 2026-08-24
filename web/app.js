@@ -1383,6 +1383,9 @@ function sendPlay(targetId, named) {
 function openModal(kind, { title, body = "", cards = [], ok = "", alt = "", onCard = null }) {
   app.modal = kind;
   $("modal").hidden = false;
+  // Which modal this is, exposed for styling: the give picker wants smaller
+  // cards than the three See the Future shows you.
+  $("modal").dataset.kind = kind;
   $("modal-title").textContent = title;
   $("modal-body").textContent = body;
   $("modal-place").hidden = true;
@@ -1391,6 +1394,7 @@ function openModal(kind, { title, body = "", cards = [], ok = "", alt = "", onCa
     if (onCard) el.onclick = () => onCard(c);
     return el;
   }));
+  markScrollable($("modal-cards"));
   const okBtn = $("modal-ok");
   okBtn.hidden = !ok;
   okBtn.textContent = ok;
@@ -1405,7 +1409,32 @@ function openModal(kind, { title, body = "", cards = [], ok = "", alt = "", onCa
 function closeModal() {
   app.modal = null;
   $("modal").hidden = true;
+  delete $("modal").dataset.kind;
 }
+
+// markScrollable flags a list that has more below the fold, so it can be drawn
+// with a faded bottom edge. A row cut off mid-card is easy to read as the end of
+// the list, and browsers here paint no persistent scrollbar to say otherwise —
+// which is exactly how a hand of eleven looked like a hand of six.
+function markScrollable(el) {
+  const update = () => {
+    const more = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
+    el.classList.toggle("has-more", more);
+  };
+  el.onscroll = update;
+  // Whether a list overflows depends on the window as much as on the contents:
+  // turning a phone sideways, or dragging a desktop window shorter, changes the
+  // answer with no scroll and no re-render to notice it.
+  if (!scrollWatchers.has(el)) {
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    scrollWatchers.set(el, ro);
+  }
+  // The modal has only just been shown, so wait for layout before measuring.
+  requestAnimationFrame(update);
+}
+
+const scrollWatchers = new WeakMap();
 
 // openDemandModal is the second half of a Three of a Kind: the target is already
 // chosen, now name the card. Everyone will hear the demand, so there is no need
