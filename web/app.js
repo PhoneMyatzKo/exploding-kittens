@@ -531,58 +531,93 @@ function gameInfo(slug) {
 
 function renderGameList() {
   const games = catalogueOfGames.list;
-  $("menu-status").textContent = games.some((g) => g.playable)
+  $("menu-status").textContent = games.length
     ? ""
-    : "No games are playable on this server yet.";
+    : "No games are set up on this server yet.";
   $("menu-status").hidden = !$("menu-status").textContent;
 
   $("game-list").replaceChildren(...games.map((g) => {
     const li = document.createElement("li");
-    // A locked tile is a real button that says why, not a dead div: tapping it
-    // should answer the question it just raised.
+    // One control per tile: the whole card is the button. A "Play" pill inside it
+    // would be a button inside a button, which is invalid and leaves half the
+    // card dead to a tap.
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "game-tile" + (g.playable ? "" : " locked");
     tile.dataset.slug = g.slug;
 
-    const emoji = document.createElement("span");
-    emoji.className = "game-emoji";
-    emoji.textContent = g.emoji || "🎲";
+    tile.append(coverEl(g), tileTextEl(g), ctaEl(g));
 
-    const text = document.createElement("span");
-    text.className = "game-text";
-    const name = document.createElement("b");
-    name.textContent = g.name;
-    const tag = document.createElement("small");
-    // The player range is the thing somebody standing in a room with friends
-    // actually needs, so every tile carries it, built or not.
-    tag.textContent = `${g.tagline} · ${g.min}–${g.max} players`;
-    text.append(name, tag);
-
-    tile.append(emoji, text);
     if (!g.playable) {
-      const soon = document.createElement("span");
-      soon.className = "soon";
-      soon.textContent = "Soon";
-      tile.append(soon);
       // Deliberately not disabled: a disabled control cannot be focused or
       // tapped, so it can never answer the question it raises. Same bargain as a
       // blocked card in the hand — it refuses, and says why.
       tile.onclick = () => toast(`${g.name} isn't built yet.`);
     } else {
-      // A chevron so the one tile you can press looks pressable next to the ones
-      // you cannot — opacity alone reads as a rendering glitch.
-      const go = document.createElement("span");
-      go.className = "game-go";
-      go.textContent = "›";
-      go.setAttribute("aria-hidden", "true");
-      tile.append(go);
       tile.onclick = () => chooseGame(g.slug);
     }
 
     li.append(tile);
     return li;
   }));
+}
+
+// coverEl is the box art, or the game's emoji on a plain field when there is
+// none. A missing file falls back the same way rather than leaving a gap.
+function coverEl(g) {
+  const box = document.createElement("span");
+  box.className = "game-cover";
+
+  const glyph = () => {
+    const e = document.createElement("span");
+    e.className = "game-emoji";
+    e.textContent = g.emoji || "🎲";
+    return e;
+  };
+
+  const fallback = () => { box.classList.add("no-art"); box.append(glyph()); };
+
+  if (!g.cover) {
+    fallback();
+    return box;
+  }
+  const img = document.createElement("img");
+  img.src = g.cover;
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.onerror = () => { img.remove(); fallback(); };
+  box.append(img);
+  return box;
+}
+
+function tileTextEl(g) {
+  const text = document.createElement("span");
+  text.className = "game-text";
+
+  const name = document.createElement("b");
+  name.className = "game-name";
+  name.textContent = g.name;
+
+  const tag = document.createElement("small");
+  tag.className = "game-tag";
+  tag.textContent = g.tagline;
+
+  // The player range is the thing somebody standing in a room with friends
+  // actually needs, so every tile carries it, built or not.
+  const players = document.createElement("small");
+  players.className = "game-players";
+  players.textContent = `${g.min}–${g.max} players`;
+
+  text.append(name, tag, players);
+  return text;
+}
+
+function ctaEl(g) {
+  const cta = document.createElement("span");
+  cta.className = g.playable ? "game-cta" : "soon";
+  cta.textContent = g.playable ? "Play now" : "Soon";
+  return cta;
 }
 
 // chooseGame commits to a game and moves on to the room screen. The choice is

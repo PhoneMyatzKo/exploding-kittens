@@ -27,6 +27,12 @@
   seeing a code. Only rooms you can actually enter are listed, so a room
   disappears once it's dealt or full.
 
+- ~~Lay the main menu out as a shelf~~ — a header bar with the site name and the
+  mute control, then the games as box-art tiles in a centred grid, two up on a
+  phone. Replaced the narrow centred panel, which showed one game at a time.
+  Kittens uses its box art; a game without any gets the house gradient behind its
+  emoji rather than an empty well.
+
 - ~~Main menu listing every game, chosen before anything else~~ — the front page
   is now a picker. Exploding Kittens is playable; UNO and UNO No Mercy are shown
   locked with a "soon" badge rather than hidden, because an empty-looking hub

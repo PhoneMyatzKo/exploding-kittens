@@ -138,6 +138,14 @@ The client builds the menu from `GET /api/games`, the same bargain the avatar
 picker makes: the list is written down once, in Go, rather than again in
 JavaScript. Adding an announced game is one struct literal.
 
+The menu is laid out as a shelf rather than a form — a bar across the top for the
+site, and the games as box-art tiles filling the width below it. That is why it
+does not use the `.panel` column the screens after it do: a 420px column shows
+one game at a time and feels narrower with every game added. A game's `Cover` is
+the path to its box art (`/cards/background.jpeg` for Kittens); a game without
+one gets the house gradient behind its emoji, so an unillustrated tile reads as
+designed rather than as a picture that failed to load.
+
 Announced-but-unbuilt games are shown locked rather than hidden. An empty-looking
 hub reads as broken, and "coming soon" is information. The tile is a real button,
 not a disabled one, so tapping it can say why — a disabled control cannot be

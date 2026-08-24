@@ -19,8 +19,12 @@ type Info struct {
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
 	Emoji   string `json:"emoji"`
-	Min     int    `json:"min"`
-	Max     int    `json:"max"`
+	// Cover is the box art for the tile, or empty for a game with none — the
+	// menu falls back to the emoji on a plain field, so an unillustrated game
+	// still gets a tile rather than a hole.
+	Cover string `json:"cover,omitempty"`
+	Min   int    `json:"min"`
+	Max   int    `json:"max"`
 	// Playable is false for a game that is announced but not built. The menu
 	// shows those greyed out rather than hiding them: an empty-looking hub reads
 	// as broken, and "coming soon" is information.
@@ -31,7 +35,8 @@ type Info struct {
 var catalogue = []Info{
 	{
 		Slug: Kittens, Name: "Exploding Kittens", Tagline: "Draw a kitten and you're out. Don't draw a kitten.",
-		Emoji: "💥", Min: game.MinPlayers, Max: game.MaxPlayers, Playable: true,
+		Emoji: "💥", Cover: "/cards/background.jpeg",
+		Min: game.MinPlayers, Max: game.MaxPlayers, Playable: true,
 	},
 	// Taglines describe the game rather than its status: the tile already carries
 	// a "soon" badge, and saying it twice wastes the only line there is to say
