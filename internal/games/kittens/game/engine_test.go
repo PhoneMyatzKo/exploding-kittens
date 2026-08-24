@@ -77,7 +77,7 @@ func TestNewGameSetup(t *testing.T) {
 			for i := range seats {
 				seats[i] = Seat{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("P%d", i)}
 			}
-			s, err := NewGame(seats, rand.New(rand.NewSource(int64(n))))
+			s, err := NewGame(seats, Original, rand.New(rand.NewSource(int64(n))))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,7 +118,7 @@ func TestNewGameRejectsBadPlayerCount(t *testing.T) {
 		for i := range seats {
 			seats[i] = Seat{ID: fmt.Sprintf("p%d", i)}
 		}
-		if _, err := NewGame(seats, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
+		if _, err := NewGame(seats, Original, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
 			t.Errorf("NewGame with %d players: err = %v, want ErrPlayerCount", n, err)
 		}
 	}
@@ -776,7 +776,7 @@ func TestRandomGamesAlwaysTerminate(t *testing.T) {
 		for i := range seats {
 			seats[i] = Seat{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("P%d", i)}
 		}
-		s, err := NewGame(seats, rng)
+		s, err := NewGame(seats, Original, rng)
 		if err != nil {
 			t.Fatal(err)
 		}

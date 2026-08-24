@@ -35,26 +35,39 @@ func TestCatalogueIsServed(t *testing.T) {
 	}
 
 	var kittens *games.Info
-	playable := 0
+	playable, announced := 0, 0
 	for i, g := range out.Games {
 		if g.Slug == games.Kittens {
 			kittens = &out.Games[i]
 		}
-		if g.Playable {
-			playable++
+		if g.Name == "" || g.Max < g.Min || g.Min < 2 {
+			t.Errorf("%s tile is not renderable: %+v", g.Slug, g)
+		}
+		if !g.Playable {
+			announced++
+			continue
+		}
+		playable++
+		// Anything the menu offers has to resolve to a deck, or creating the room
+		// would be refused by the endpoint behind the tile.
+		if _, ok := games.VariantFor(g.Slug); !ok {
+			t.Errorf("%s is offered as playable but maps to no deck", g.Slug)
+		}
+		if !games.Playable(g.Slug) {
+			t.Errorf("%s is served as playable but Playable() disagrees", g.Slug)
 		}
 	}
 	if kittens == nil {
 		t.Fatalf("catalogue does not list %q: %+v", games.Kittens, out.Games)
 	}
 	if !kittens.Playable {
-		t.Error("the one implemented game is not marked playable")
+		t.Error("the base game is not marked playable")
 	}
-	if kittens.Name == "" || kittens.Max < kittens.Min || kittens.Min < 2 {
-		t.Errorf("kittens tile is not renderable: %+v", *kittens)
+	if playable == 0 {
+		t.Error("no games are playable, so the menu is a dead end")
 	}
-	if playable != 1 {
-		t.Errorf("%d games marked playable, want exactly 1", playable)
+	if announced == 0 {
+		t.Error("nothing is announced, so the coming-soon tiles are untested")
 	}
 }
 

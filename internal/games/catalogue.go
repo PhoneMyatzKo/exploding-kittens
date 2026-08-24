@@ -9,9 +9,14 @@ package games
 
 import "boardgame/kittens/internal/games/kittens/game"
 
-// Kittens is the slug of the one game that is playable today. Rooms default to
-// it, so an older client that knows nothing about games still gets a game.
-const Kittens = "kittens"
+// Kittens is the slug rooms default to, so an older client that knows nothing
+// about games still gets a game. KittensImploding is the same engine dealing the
+// Original Edition plus the Imploding Kittens pack — the expansion has no
+// Defuses and no deck of its own, so it is only ever playable combined.
+const (
+	Kittens          = "kittens"
+	KittensImploding = "kittens-imploding"
+)
 
 // Info is one tile on the menu.
 type Info struct {
@@ -36,7 +41,13 @@ var catalogue = []Info{
 	{
 		Slug: Kittens, Name: "Exploding Kittens", Tagline: "Draw a kitten and you're out. Don't draw a kitten.",
 		Emoji: "💥", Cover: "/cards/background.jpeg",
-		Min: game.MinPlayers, Max: game.MaxPlayers, Playable: true,
+		Min: game.MinPlayers, Max: game.MaxPlayersFor(game.Original), Playable: true,
+	},
+	{
+		Slug: KittensImploding, Name: "Imploding Kittens",
+		Tagline: "The expansion: reversals, wildcards, and one kitten no Defuse can stop.",
+		Emoji:   "🌀", Cover: "/cards/imploding/Imploding-Kitten.jpg",
+		Min: game.MinPlayers, Max: game.MaxPlayersFor(game.Imploding), Playable: true,
 	},
 	// Taglines describe the game rather than its status: the tile already carries
 	// a "soon" badge, and saying it twice wastes the only line there is to say
@@ -64,6 +75,19 @@ func Playable(slug string) bool {
 		}
 	}
 	return false
+}
+
+// VariantFor maps a catalogue slug onto the card sets it deals. This is the only
+// place the mapping lives: the room carries a variant it does not interpret, and
+// the engine has never heard of a slug.
+func VariantFor(slug string) (game.Variant, bool) {
+	switch slug {
+	case Kittens:
+		return game.Original, true
+	case KittensImploding:
+		return game.Imploding, true
+	}
+	return "", false
 }
 
 // Name is the display name for a slug, falling back to the slug itself so an

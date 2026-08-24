@@ -17,10 +17,21 @@ import {
 await requireServer();
 console.log("full game");
 
-// Cats are the only cards that stack, and they only stack with their own kind.
-const isCat = (slug) => slug.startsWith("cat-");
-// Cards that do something on their own when played from the hand.
-const SINGLES = ["skip", "attack", "shuffle", "future", "favor"];
+// GAME picks the deck: the base game by default, or the expansion.
+const GAME = process.env.GAME || "kittens";
+
+// Cats stack with their own kind. The expansion's Feral Cat is a wildcard, so it
+// counts as a cat and matches anything.
+const FERAL = "feral-cat";
+const isCat = (slug) => slug.startsWith("cat-") || slug === FERAL;
+// Cards that do something on their own when played from the hand. The last two
+// need a victim named.
+const SINGLES = [
+  "skip", "attack", "shuffle", "future",
+  "reverse", "bottom", "alter",
+  "favor", "targeted-attack",
+];
+const NEEDS_TARGET = ["favor", "targeted-attack"];
 
 const hit = new Set();
 const MAX_STEPS = 400;
@@ -43,8 +54,8 @@ const players = [
 const [host] = players;
 
 try {
-  await step("three players reach a dealt table", async () => {
-    const code = await host.create();
+  await step(`three players reach a dealt table (${GAME})`, async () => {
+    const code = await host.create({ game: GAME });
     for (const p of players.slice(1)) await p.join(code);
     for (const p of players) {
       await waitFor(async () => (await p.lobbyNames()).length === 3, {
@@ -160,9 +171,10 @@ async function answerModal(p) {
     return title.replace(/[^A-Za-z ]/g, "").trim() || "someone";
   }
 
-  // Defuse: slide the kitten back in somewhere.
+  // Putting a kitten back: a defused Exploding one, or the Imploding one on its
+  // first appearance. Same controls, so they are told apart by the title.
   if (await visible(p.$("#modal-place"))) {
-    hit.add("defuse");
+    hit.add(/imploding/i.test(title) ? "imploding" : "defuse");
     const quick = ["top", "middle", "random", "bottom"];
     await safeClick(p.$(`[data-place="${quick[Math.floor(Math.random() * quick.length)]}"]`));
     await safeClick(p.$("#place-confirm"));
@@ -182,6 +194,19 @@ async function answerModal(p) {
   if (/hand one over/i.test(title)) {
     hit.add("favor");
     await safeClick(p.$("#modal-cards .card").first());
+    return "";
+  }
+
+  // Alter the Future: swap two of the three before putting them back, so the
+  // reorder is actually driven rather than confirmed as it arrived.
+  if (/alter the future/i.test(title)) {
+    hit.add("alter");
+    const cards = p.$(".alter-card");
+    if ((await cards.count()) >= 2) {
+      await safeClick(cards.nth(0), 800);
+      await safeClick(cards.nth(1), 800);
+    }
+    await safeClick(p.$("#modal-ok"), 1500);
     return "";
   }
 
@@ -243,15 +268,23 @@ async function playSomething(p) {
   const hand = await p.hand();
 
   // Matching cats, biggest set first: three is a demand, two is a random steal.
+  // Feral Cats join whichever set is being built, which is how the expansion's
+  // wildcard gets exercised at all.
   const groups = {};
-  for (const c of hand) if (isCat(c.slug)) (groups[c.slug] ||= []).push(c);
-  const set = Object.values(groups).sort((a, b) => b.length - a.length)[0];
+  const ferals = hand.filter((c) => c.slug === FERAL);
+  for (const c of hand) {
+    if (isCat(c.slug) && c.slug !== FERAL) (groups[c.slug] ||= []).push(c);
+  }
+  const sets = Object.values(groups).map((g) => g.concat(ferals));
+  if (ferals.length >= 2) sets.push(ferals);
+  const set = sets.sort((a, b) => b.length - a.length)[0];
 
   if (set && set.length >= 2 && Math.random() < 0.6) {
     const take = set.length >= 3 && Math.random() < 0.5 ? 3 : 2;
     for (const c of set.slice(0, take)) {
       if (!(await p.selectCard(c.id))) return false;
     }
+    if (set.slice(0, take).some((c) => c.slug === FERAL)) hit.add("feralCat");
     hit.add(take === 3 ? "catTrio" : "catPair");
     return finishPlay(p, { needsTarget: true });
   }
@@ -261,7 +294,7 @@ async function playSomething(p) {
   const c = single[Math.floor(Math.random() * single.length)];
   if (!(await p.selectCard(c.id))) return false;
   hit.add(c.slug);
-  return finishPlay(p, { needsTarget: c.slug === "favor" });
+  return finishPlay(p, { needsTarget: NEEDS_TARGET.includes(c.slug) });
 }
 
 async function finishPlay(p, { needsTarget }) {

@@ -622,6 +622,35 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .demand-pick:active { transform: translateY(1px); }
 .demand-glyph { font-size: 22px; line-height: 1; }
 
+/* ───────────────────── alter the future (reorder the deck) ───────────────── */
+
+/* All three across, even on a phone: the whole point is reading them as an
+   ordered row, and a wrapped one reads as two rows of nothing in particular. */
+.alter-grid { display: flex; gap: 8px; justify-content: center; width: 100%; }
+.modal[data-kind="alter"] .modal-cards { --card-w: clamp(72px, 21vw, 112px); }
+
+.alter-card { position: relative; }
+/* The picked card is lifted the same way a selected card in the hand is, so the
+   gesture reads as the same gesture. */
+.alter-card.picked {
+  transform: translateY(-10px);
+  box-shadow: 0 0 0 3px var(--warn), 0 12px 22px rgba(0,0,0,.45);
+}
+.alter-pos {
+  position: absolute; top: 4px; left: 4px;
+  font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  background: var(--crimson); color: var(--paper);
+  border-radius: 999px; padding: 2px 6px;
+}
+
+/* The armed Imploding Kitten is the one hazard a Defuse cannot answer, so the
+   odds readout pulses rather than just changing colour. */
+.deck-risk.armed { animation: armed 1.6s ease-in-out infinite; }
+@keyframes armed { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .deck-risk.armed { animation: none; }
+}
+
 /* ───────────────────────────── rules ───────────────────────────── */
 
 .rules-panel {
@@ -630,9 +659,47 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   display: flex; flex-direction: column;
 }
 .rules-head {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 10px;
   padding: 14px; border-bottom: 1px solid var(--line);
 }
+.rules-title { margin-right: auto; }
+
+/* Language pills, the same "chosen one takes the gold band" idea as the room
+   visibility toggle. */
+.lang-toggle { display: flex; gap: 4px; flex: none; }
+.lang {
+  font: inherit; font-size: 12px; font-weight: 700;
+  /* Full-contrast ink even when unselected: the gold fill already says which is
+     chosen, and grey on paper turns Burmese diacritics to mush at this size. */
+  color: var(--ink); background: var(--bg-soft);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 9px; cursor: pointer;
+  /* Burmese stacks diacritics above and below the baseline, so a line box sized
+     for Latin clips them. */
+  line-height: 1.7; min-width: 3.4rem;
+}
+/* And 12px is simply too small for those marks to resolve into letters at all —
+   the label has to be bigger than the Latin one to be equally readable. */
+.lang[lang="my"] { font-size: 15px; line-height: 1.5; }
+.lang.on { color: var(--ink); border-color: var(--gold); background: var(--gold); }
+.lang:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* A real card beats a glyph for "which one is this in my hand" — but only if it
+   is big enough to recognise. Below about 60px the art is just a colour. */
+.rules-art {
+  width: 58px; aspect-ratio: 3 / 4; object-fit: cover;
+  border-radius: 6px; border: 1px solid var(--line);
+  vertical-align: middle; margin-right: 10px; flex: none;
+  background: var(--bg-soft);
+}
+@media (min-width: 560px) {
+  .rules-art { width: 72px; }
+}
+.rules-glyph { margin-right: 7px; }
+/* Burmese needs more line height than Latin at the same size, or the stacked
+   diacritics collide. */
+.rules-lang[lang="my"] { line-height: 1.85; }
+.rules-lang[lang="my"] dd { line-height: 1.9; }
 .rules-body {
   flex: 1; overflow-y: auto;
   padding: 16px 18px calc(24px + env(safe-area-inset-bottom));
@@ -646,11 +713,18 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   text-transform: uppercase; letter-spacing: .1em;
 }
 .rules-cards { margin: 0; display: grid; gap: 4px 12px; }
-.rules-cards dt { color: var(--ink); font-weight: 700; margin-top: 8px; }
+/* A row rather than a run of inline text, so the card picture and the name sit
+   together however long the name is — Burmese names run longer than English. */
+.rules-cards dt {
+  color: var(--ink); font-weight: 700; margin-top: 8px;
+  display: flex; align-items: center;
+}
 .rules-cards dd { margin: 0; }
 
 @media (min-width: 560px) {
-  .rules-cards { grid-template-columns: 11rem 1fr; align-items: baseline; }
+  /* start, not baseline: the card picture is taller than a line of text, and
+     baseline alignment would drop the description halfway down it. */
+  .rules-cards { grid-template-columns: 15rem 1fr; align-items: start; }
   .rules-cards dt { margin-top: 0; }
 }
 

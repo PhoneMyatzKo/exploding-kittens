@@ -11,7 +11,8 @@ const (
 	PhaseTurn     Phase = "turn"      // current player is choosing what to do
 	PhaseNope     Phase = "nope"      // an action is on the table, awaiting Nopes
 	PhaseFavor    Phase = "favor"     // Favor target is choosing a card to give
-	PhaseDefuse   Phase = "defuse"    // a player is reinserting a defused Kitten
+	PhaseDefuse   Phase = "defuse"    // a player is putting a drawn kitten back
+	PhaseAlter    Phase = "alter"     // a player is reordering the top of the deck
 	PhaseGameOver Phase = "game_over" //
 )
 
@@ -28,6 +29,12 @@ const (
 	// PendCatTriple is three matching cats: the actor names a card and takes it
 	// from the target if they hold one.
 	PendCatTriple PendingKind = "cat_triple"
+
+	// Imploding Kittens expansion.
+	PendReverse  PendingKind = "reverse"
+	PendBottom   PendingKind = "bottom"
+	PendAlter    PendingKind = "alter"
+	PendTargeted PendingKind = "targeted_attack"
 )
 
 // PendingAction is an effect that has been played but not yet resolved, because
@@ -84,23 +91,41 @@ func (p *Player) findType(t CardType) (Card, bool) {
 // State is the complete, unredacted game. It contains the deck order and every
 // hand, so it must never be serialised to a client — see internal/view.
 type State struct {
+	// Variant is which printed sets are in this deck. Fixed at the deal.
+	Variant Variant
+
 	Players []*Player
 	Draw    []Card // top-first
 	Discard []Card // last element is the visible top
 
 	Current        int // index into Players
 	TurnsRemaining int // turns the current player still owes, including this one
-	Phase          Phase
-	Pending        *PendingAction
+	// Direction is +1 for normal play and -1 once a Reverse has been played. It
+	// is a field rather than a bool so advance() can just add it.
+	Direction int
+	Phase     Phase
+	Pending   *PendingAction
 
-	// PendingKitten is the Exploding Kitten being reinserted during PhaseDefuse.
+	// PendingKitten is the kitten being put back during PhaseDefuse — either an
+	// Exploding Kitten that was defused, or the Imploding Kitten on its first
+	// appearance, which is put back face up and costs no Defuse.
 	PendingKitten *Card
 	// FavorRequester is who gets the card during PhaseFavor.
 	FavorRequester string
+	// Altering is who must reorder the top of the deck during PhaseAlter.
+	Altering string
 
 	WinnerID string
 
 	rng *rand.Rand
+}
+
+// alterCount is how many cards Alter the Future exposes, capped by the deck.
+func (s *State) alterCount() int {
+	if len(s.Draw) < 3 {
+		return len(s.Draw)
+	}
+	return 3
 }
 
 func (s *State) playerByID(id string) *Player {
@@ -128,26 +153,32 @@ func (s *State) aliveCount() int {
 // a single turn. Callers that need to hand over extra turns (Attack) set
 // TurnsRemaining afterwards.
 func (s *State) advance() {
-	for i := 1; i <= len(s.Players); i++ {
-		next := (s.Current + i) % len(s.Players)
-		if s.Players[next].Alive {
-			s.Current = next
-			s.TurnsRemaining = 1
-			return
-		}
-	}
+	s.Current = s.nextAliveAfter(s.Current)
+	s.TurnsRemaining = 1
 }
 
-// nextAliveAfter returns the index of the living player following i, or i itself
-// if nobody else is left.
+// nextAliveAfter returns the index of the living player following i in the
+// current direction of play, or i itself if nobody else is left.
 func (s *State) nextAliveAfter(i int) int {
-	for k := 1; k <= len(s.Players); k++ {
-		n := (i + k) % len(s.Players)
-		if s.Players[n].Alive {
-			return n
+	step := s.step()
+	n := len(s.Players)
+	for k := 1; k <= n; k++ {
+		// +n keeps the modulo positive when play has been reversed.
+		next := ((i+k*step)%n + n) % n
+		if s.Players[next].Alive {
+			return next
 		}
 	}
 	return i
+}
+
+// step is the direction of play, defaulting to forwards so a State built without
+// going through NewGame (the rules tests do this) still turns over.
+func (s *State) step() int {
+	if s.Direction < 0 {
+		return -1
+	}
+	return 1
 }
 
 // endTurn burns one of the current player's turns. If they still owe more (they

@@ -22,7 +22,7 @@ func TestFullDeckGivesCopiesDistinctFaces(t *testing.T) {
 	}
 	withCardArt(t, map[string][]string{"defuse": deep})
 
-	deck := fullDeck(rand.New(rand.NewSource(3)))
+	deck := fullDeck(Original, rand.New(rand.NewSource(3)))
 
 	seen := map[string]bool{}
 	n := 0
@@ -48,7 +48,7 @@ func TestFullDeckGivesCopiesDistinctFaces(t *testing.T) {
 func TestFullDeckWrapsAPoolSmallerThanTheCount(t *testing.T) {
 	withCardArt(t, map[string][]string{"cat-taco": {"cat-card/Tacocat.jpg"}})
 
-	deck := fullDeck(rand.New(rand.NewSource(4)))
+	deck := fullDeck(Original, rand.New(rand.NewSource(4)))
 	for _, c := range deck {
 		if c.Type == CatTaco && c.Art != "cat-card/Tacocat.jpg" {
 			t.Fatalf("taco cat %d got %q", c.ID, c.Art)
@@ -59,7 +59,7 @@ func TestFullDeckWrapsAPoolSmallerThanTheCount(t *testing.T) {
 // Cards with nothing in the catalogue still deal; the client falls back to a
 // glyph. This is also what every other test in the package relies on.
 func TestFullDeckWithoutArtLeavesFacesEmpty(t *testing.T) {
-	for _, c := range fullDeck(rand.New(rand.NewSource(5))) {
+	for _, c := range fullDeck(Original, rand.New(rand.NewSource(5))) {
 		if c.Art != "" {
 			t.Fatalf("card %d got a face from an empty catalogue: %q", c.ID, c.Art)
 		}
@@ -72,7 +72,7 @@ func TestFullDeckWithoutArtLeavesFacesEmpty(t *testing.T) {
 func TestFullDeckOrderIsUnchangedByAnEmptyCatalogue(t *testing.T) {
 	order := func() []string {
 		rng := rand.New(rand.NewSource(9))
-		deck := fullDeck(rng)
+		deck := fullDeck(Original, rng)
 		shuffle(deck, rng)
 		return typesOf(deck)
 	}
@@ -98,7 +98,7 @@ func TestNewGameDealsFacesIntoHands(t *testing.T) {
 		"defuse": {"defuse/a.jpg", "defuse/b.jpg", "defuse/c.jpg", "defuse/d.jpg", "defuse/e.jpg", "defuse/f.jpg"},
 	})
 
-	s, err := NewGame([]Seat{{ID: "p0", Name: "A"}, {ID: "p1", Name: "B"}}, rand.New(rand.NewSource(11)))
+	s, err := NewGame([]Seat{{ID: "p0", Name: "A"}, {ID: "p1", Name: "B"}}, Original, rand.New(rand.NewSource(11)))
 	if err != nil {
 		t.Fatal(err)
 	}
