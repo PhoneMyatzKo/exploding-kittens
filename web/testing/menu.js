@@ -70,12 +70,18 @@ try {
 
   await check("the server refuses to open a room for an unbuilt game", async () => {
     // The tile being disabled is a courtesy; the door is what has to be locked.
+    // The slug comes from the catalogue rather than being written down here: a
+    // game moving from locked to playable should not need this test edited, and
+    // when it did, this check silently asserted the opposite of the truth.
+    const unbuilt = (await listGames()).find((g) => !g.playable);
+    assert(unbuilt, "every game is playable, so nothing tests the locked door");
     const res = await fetch(`${BASE}/api/rooms`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ game: "uno" }),
+      body: JSON.stringify({ game: unbuilt.slug }),
     });
-    assert(res.status === 400, `POST for an unbuilt game returned ${res.status}, want 400`);
+    assert(res.status === 400,
+      `POST for unbuilt ${unbuilt.slug} returned ${res.status}, want 400`);
   });
 
   await step("picking the playable game reaches the room screen", async () => {

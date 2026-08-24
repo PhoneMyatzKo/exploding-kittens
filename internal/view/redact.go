@@ -6,17 +6,19 @@
 // else's hand as a count, and the draw pile as a count — never its order.
 package view
 
-import "boardgame/kittens/internal/games/kittens/game"
+import (
+	"boardgame/kittens/internal/core"
+	"boardgame/kittens/internal/games/kittens/game"
+)
 
-// Membership is the connection-level information the room layer owns; the game
-// engine knows nothing about sockets or who is hosting.
-type Membership struct {
-	ID        string
-	Name      string
-	Avatar    string
-	Connected bool
-	Host      bool
-}
+// Membership and Entry are the room's, not this game's: every game reports what
+// happened in the same shape, and the room stamps the same connection facts onto
+// all of them. Aliased rather than converted so nothing in here has to translate
+// between two identical structs.
+type (
+	Membership = core.Membership
+	Entry      = core.Entry
+)
 
 // Seat is one player as seen by everybody.
 type Seat struct {
@@ -71,18 +73,6 @@ type Me struct {
 	CanPass   bool        `json:"canPass"`
 	MustGive  bool        `json:"mustGive"`
 	MustPlace bool        `json:"mustPlace"`
-}
-
-// Entry is one line of the shared play-by-play.
-type Entry struct {
-	// Seq counts up for the life of the room, so a client can tell a new event
-	// from one it has already animated. Zero on private events.
-	Seq      int         `json:"seq,omitempty"`
-	Kind     string      `json:"kind"`
-	ActorID  string      `json:"actorId,omitempty"`
-	TargetID string      `json:"targetId,omitempty"`
-	Cards    []game.Card `json:"cards,omitempty"`
-	Text     string      `json:"text,omitempty"`
 }
 
 // View is the complete payload one client receives.

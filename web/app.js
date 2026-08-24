@@ -296,6 +296,7 @@ function setTheme(slug) {
 //   games/<slug>/table.html   its screens, injected into #game-root
 //   games/<slug>/index.js     its client, default-exporting this shape:
 //
+//     avatars      false if this game has no use for the cat portraits
 //     slots        mute-button slot ids its markup carries
 //     mount(ctx)   wire the injected markup; ctx is the shell handle below
 //     unmount()    drop timers, listeners and anything still animating
@@ -586,7 +587,7 @@ function renderLobby(v) {
 // included, which you leave by picking another. Picking at all is optional.
 function renderAvatarPicker(v) {
   const box = $("avatar-picker");
-  box.hidden = avatars.ids.length === 0;
+  box.hidden = avatars.ids.length === 0 || !gameUsesAvatars();
   if (box.hidden) return;
 
   const heldBy = new Map(v.seats.filter((s) => s.avatar).map((s) => [s.avatar, s]));
@@ -621,9 +622,19 @@ function renderAvatarPicker(v) {
   }));
 }
 
+// Whether the mounted game uses the portraits at all. They are Exploding
+// Kittens' cats, and a game that has not opted in gets neither the picker nor a
+// cat's face next to every name — a UNO table full of kittens reads as the wrong
+// game rather than as decoration. Default on, so a game says nothing to keep
+// them.
+const gameUsesAvatars = () => !mounted.mod || mounted.mod.avatars !== false;
+
 // The portrait at name size, beside a player in the lobby and at the table. Handed
 // to games through ctx, since the portraits are shared.
 function avatarChip(seat) {
+  // An empty node rather than nothing at all: every caller appends the result.
+  if (!gameUsesAvatars()) return document.createTextNode("");
+
   const el = document.createElement("span");
   el.className = "avatar-chip";
   if (!seat.avatar) {

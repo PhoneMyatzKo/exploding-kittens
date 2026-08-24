@@ -7,11 +7,17 @@
 // keeps the menu from being the thing every future game has to be wired into.
 package games
 
-import "boardgame/kittens/internal/games/kittens/game"
+import (
+	kittensgame "boardgame/kittens/internal/games/kittens/game"
+	unogame "boardgame/kittens/internal/games/uno/game"
+)
 
-// Kittens is the slug of the one game that is playable today. Rooms default to
-// it, so an older client that knows nothing about games still gets a game.
-const Kittens = "kittens"
+// Slugs. Rooms default to Kittens, so an older client that knows nothing about
+// games still gets a game.
+const (
+	Kittens = "kittens"
+	UNO     = "uno"
+)
 
 // Info is one tile on the menu.
 type Info struct {
@@ -31,14 +37,14 @@ type Info struct {
 var catalogue = []Info{
 	{
 		Slug: Kittens, Name: "Exploding Kittens", Tagline: "Draw a kitten and you're out. Don't draw a kitten.",
-		Emoji: "💥", Min: game.MinPlayers, Max: game.MaxPlayers, Playable: true,
+		Emoji: "💥", Min: kittensgame.MinPlayers, Max: kittensgame.MaxPlayers, Playable: true,
 	},
 	// Taglines describe the game rather than its status: the tile already carries
 	// a "soon" badge, and saying it twice wastes the only line there is to say
 	// what the game actually is.
 	{
-		Slug: "uno", Name: "UNO", Tagline: "Match the colour or the number.",
-		Emoji: "🎴", Min: 2, Max: 10, Playable: false,
+		Slug: UNO, Name: "UNO", Tagline: "Match the colour or the number.",
+		Emoji: "🎴", Min: unogame.MinPlayers, Max: unogame.MaxPlayers, Playable: true,
 	},
 	{
 		Slug: "uno-no-mercy", Name: "UNO No Mercy", Tagline: "Stacking draws, no way out.",

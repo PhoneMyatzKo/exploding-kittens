@@ -34,27 +34,45 @@ func TestCatalogueIsServed(t *testing.T) {
 		t.Fatalf("catalogue has %d entries, want the playable game and at least one announced", len(out.Games))
 	}
 
-	var kittens *games.Info
+	byslug := map[string]games.Info{}
 	playable := 0
-	for i, g := range out.Games {
-		if g.Slug == games.Kittens {
-			kittens = &out.Games[i]
-		}
+	for _, g := range out.Games {
+		byslug[g.Slug] = g
 		if g.Playable {
 			playable++
 		}
 	}
-	if kittens == nil {
-		t.Fatalf("catalogue does not list %q: %+v", games.Kittens, out.Games)
+	for _, slug := range []string{games.Kittens, games.UNO} {
+		g, ok := byslug[slug]
+		if !ok {
+			t.Fatalf("catalogue does not list %q: %+v", slug, out.Games)
+		}
+		if !g.Playable {
+			t.Errorf("%q is implemented but not marked playable", slug)
+		}
+		if g.Name == "" || g.Max < g.Min || g.Min < 2 {
+			t.Errorf("%q tile is not renderable: %+v", slug, g)
+		}
 	}
-	if !kittens.Playable {
-		t.Error("the one implemented game is not marked playable")
+	// Something has to still be announced-but-unbuilt, or the "soon" badge and
+	// the refusal at POST /api/rooms are both untested paths.
+	if playable == len(out.Games) {
+		t.Error("every game is playable, so nothing exercises the locked tile")
 	}
-	if kittens.Name == "" || kittens.Max < kittens.Min || kittens.Min < 2 {
-		t.Errorf("kittens tile is not renderable: %+v", *kittens)
-	}
-	if playable != 1 {
-		t.Errorf("%d games marked playable, want exactly 1", playable)
+}
+
+// A tile the menu offers must be a tile the server can actually deal. This is
+// the check that keeps the catalogue and the rules registry from drifting: the
+// catalogue is data, and it is very easy to flip a flag with nothing behind it.
+func TestEveryPlayableGameHasRules(t *testing.T) {
+	for _, g := range games.All() {
+		_, err := games.New(g.Slug, nil)
+		if g.Playable && err != nil {
+			t.Errorf("%q is playable but has no rules: %v", g.Slug, err)
+		}
+		if !g.Playable && err == nil {
+			t.Errorf("%q has rules but is not marked playable", g.Slug)
+		}
 	}
 }
 
@@ -88,7 +106,7 @@ func TestRoomsDefaultToKittens(t *testing.T) {
 func TestUnbuiltAndUnknownGamesAreRefused(t *testing.T) {
 	base, _ := newTestServer(t)
 
-	for _, slug := range []string{"uno", "chess", "kittens "} {
+	for _, slug := range []string{"uno-no-mercy", "chess", "kittens "} {
 		t.Run(slug, func(t *testing.T) {
 			body := strings.NewReader(`{"game":` + quote(slug) + `}`)
 			resp, err := http.Post(base+"/api/rooms", "application/json", body)

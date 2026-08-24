@@ -29,6 +29,10 @@
 /* Structural tokens — geometry, shared by every game. */
 :root {
   --radius: 14px;
+  /* The back of a card: the deck, and a hand turned face-down. One token because
+     it is the same picture in both places, and per-game because it is the one
+     piece of card art every game has to bring its own of. */
+  --card-back: url("/cards/background.jpeg");
   /* Cards are 3:4, matching the printed deck and the art we cut for the back.
      Sized to show off the scans: every card carries a different one, so the face
      is worth looking at rather than just identifying. The vw term still governs
@@ -128,7 +132,28 @@
   --surface-soft: #f4f4f4;     /* black 5% over surface */
   --surface-line: #d0d0d1;     /* black 18% over surface */
   --surface-ink: #000000;      /* 20.6:1 on surface */
+
+  --card-back: url("/media/uno/uno-background.jpg");
 }
+
+/* UNO's stage art, behind everything and fixed so it does not scroll with the
+   hand. Scoped to this palette rather than tokenised because the scrim over it
+   is a judgement about this picture: it is a bright swirl of cards, and anything
+   less than four fifths black has the background competing with the table. Also
+   why it is `fixed` and painted once on the root element rather than per screen —
+   two of them meeting at a seam would be visible.
+
+   Exploding Kittens deliberately has no equivalent: its ground is a flat colour,
+   and adding a layer under it would change every screen it already passes. */
+:root[data-game="uno"] {
+  background:
+    linear-gradient(rgb(var(--scrim-rgb) / .84), rgb(var(--scrim-rgb) / .84)),
+    url("/media/uno/uno-background.jpg") center / cover fixed no-repeat;
+}
+/* On the root element rather than a ::before, because body's own background
+   paints over any negative-z-index layer beneath it — so the ground has to be
+   the ground, and body has to get out of the way. */
+:root[data-game="uno"] body { background: transparent; }
 
 /* Surface family. Declaring the tokens on the container flips every descendant
    that reads --ink/--muted/--line/--bg-soft, so the rules below stay generic.
@@ -424,7 +449,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   width: var(--card-w); aspect-ratio: 3 / 4;
   border-radius: var(--radius); cursor: pointer;
   color: var(--surface); font: inherit; padding: 0;
-  background: url("/cards/background.jpeg") center / cover, var(--brand);
+  background: var(--card-back) center / cover, var(--brand);
   border: 2px solid var(--line);
   display: grid; align-content: end;
   transition: transform .1s ease, border-color .15s ease;
@@ -506,7 +531,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    the reveal, so it only runs on the card you actually turned over. */
 .card.hidden-face {
   padding: 0;
-  background: url("/cards/background.jpeg") center / cover, var(--brand);
+  background: var(--card-back) center / cover, var(--brand);
 }
 .card.flipping { animation: flip-face .26s ease both; }
 @keyframes flip-face {
@@ -758,10 +783,16 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* ───────────────────────── modal & toasts ───────────────────────── */
 
+/* `safe center` rather than `center`, and scrollable: a prompt showing a hand
+   does not know how big that hand is, and a box taller than the viewport centres
+   its overflow off *both* edges — which loses the buttons at the bottom and
+   cannot be scrolled back to. `safe` falls back to start-aligned when it does not
+   fit, so the title stays put and the actions come into reach. */
 .modal {
   position: fixed; inset: 0; z-index: 60;
   background: rgb(var(--scrim-rgb) / .6); backdrop-filter: blur(3px);
-  display: grid; place-items: center; padding: 20px;
+  display: grid; place-items: safe center; padding: 20px;
+  overflow: auto;
 }
 .modal-box {
   width: min(480px, 100%); background: var(--panel);
