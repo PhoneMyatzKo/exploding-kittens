@@ -31,12 +31,24 @@ func seats(n int) ([]game.Seat, []Membership) {
 // random states and asserts that the only card IDs a player can see are their
 // own hand, the top of the discard, and the face-up cards of an open Nope
 // window. Crucially the draw pile's *order* must never appear.
+// Both decks are walked. The expansion is the one that puts the top of the draw
+// pile in front of a player on purpose — Alter the Future — so it is exactly the
+// deck where a leak would be easiest to introduce. Those faces carry no card IDs,
+// which is what lets this scan stay as strict as it is.
 func TestViewNeverLeaksHiddenCards(t *testing.T) {
+	for _, variant := range []game.Variant{game.Original, game.Imploding} {
+		t.Run(string(variant), func(t *testing.T) { leakScan(t, variant) })
+	}
+}
+
+func leakScan(t *testing.T, variant game.Variant) {
+	t.Helper()
+	sawAlter := false
 	for seed := int64(0); seed < 60; seed++ {
 		rng := rand.New(rand.NewSource(seed))
-		n := 2 + int(seed)%4
+		n := 2 + int(seed)%(game.MaxPlayersFor(variant)-1)
 		gs, ms := seats(n)
-		s, err := game.NewGame(gs, rng)
+		s, err := game.NewGame(gs, variant, rng)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,6 +56,9 @@ func TestViewNeverLeaksHiddenCards(t *testing.T) {
 		for step := 0; step < 400 && s.Phase != game.PhaseGameOver; step++ {
 			if _, err := game.Apply(s, anyLegalMove(s, rng)); err != nil {
 				t.Fatalf("seed %d: %v", seed, err)
+			}
+			if s.Phase == game.PhaseAlter {
+				sawAlter = true
 			}
 
 			for _, m := range ms {
@@ -78,6 +93,13 @@ func TestViewNeverLeaksHiddenCards(t *testing.T) {
 			}
 		}
 	}
+
+	// A scan that never reaches the phase where the deck is shown to somebody
+	// proves nothing about it, and would go quiet if the driver stopped playing
+	// the card.
+	if variant == game.Imploding && !sawAlter {
+		t.Error("the scan never reached Alter the Future, so it did not test it")
+	}
 }
 
 func TestLobbyViewHasNoCards(t *testing.T) {
@@ -93,7 +115,7 @@ func TestLobbyViewHasNoCards(t *testing.T) {
 
 func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 	gs, ms := seats(3)
-	s, err := game.NewGame(gs, rand.New(rand.NewSource(7)))
+	s, err := game.NewGame(gs, game.Original, rand.New(rand.NewSource(7)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +139,7 @@ func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 func TestKittensLeftTracksTheDeck(t *testing.T) {
 	gs, ms := seats(4)
 	rng := rand.New(rand.NewSource(3))
-	s, err := game.NewGame(gs, rng)
+	s, err := game.NewGame(gs, game.Original, rng)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +178,11 @@ func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
 		id := s.AwaitingGiftFrom()
 		p := s.Find(id)
 		return game.Action{Kind: game.ActGiveCard, PlayerID: id, CardIDs: []int{p.Hand[rng.Intn(len(p.Hand))].ID}}
+	case game.PhaseAlter:
+		return game.Action{
+			Kind: game.ActAlterFuture, PlayerID: s.AlteringID(),
+			Order: rng.Perm(len(s.AlterFaces())),
+		}
 	case game.PhaseNope:
 		return game.Action{Kind: game.ActNopeExpired}
 	}
@@ -170,7 +197,9 @@ func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
 	if rng.Intn(2) == 0 {
 		for _, c := range p.Hand {
 			switch c.Slug {
-			case "skip", "attack", "shuffle", "future":
+			// "alter" is the one that matters here: it is the only card that puts
+			// the deck in front of somebody, so the scan has to reach that phase.
+			case "skip", "attack", "shuffle", "future", "reverse", "bottom", "alter":
 				return game.Action{Kind: game.ActPlay, PlayerID: p.ID, CardIDs: []int{c.ID}}
 			}
 		}

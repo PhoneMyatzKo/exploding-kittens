@@ -41,6 +41,12 @@ import (
 //go:embed src/games/kittens/images/shuffle/*.jpg
 //go:embed src/games/kittens/images/see-the-future/*.jpg
 //go:embed src/games/kittens/images/cat-card/*.jpg
+//go:embed src/games/kittens/images/imploding/*.jpg
+//go:embed src/games/kittens/images/reverse/*.jpg
+//go:embed src/games/kittens/images/bottom/*.jpg
+//go:embed src/games/kittens/images/feral-cat/*.jpg
+//go:embed src/games/kittens/images/alter/*.jpg
+//go:embed src/games/kittens/images/targeted-attack/*.jpg
 //go:embed src/avatars/*.png src/audio/*.mp3 src/games/kittens/video/*.mp4
 var assets embed.FS
 
@@ -76,6 +82,16 @@ var cardArtDirs = map[string]string{
 	"favor":     "favor",
 	"shuffle":   "shuffle",
 	"future":    "see-the-future",
+
+	// Imploding Kittens expansion. Only Alter the Future has more than one
+	// printed face so far; the rest are directories with one scan in them, which
+	// costs nothing and means dropping a second face in needs no code change.
+	"imploding":       "imploding",
+	"reverse":         "reverse",
+	"bottom":          "bottom",
+	"feral-cat":       "feral-cat",
+	"alter":           "alter",
+	"targeted-attack": "targeted-attack",
 }
 
 // cardArtFiles names the faces that come one to a card. The five cat cards are

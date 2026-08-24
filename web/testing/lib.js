@@ -174,8 +174,8 @@ export class Player {
 
   // create returns the room code. Visibility is chosen on the home screen
   // because the room does not exist yet once you are in the lobby.
-  async create({ visibility = "public" } = {}) {
-    await this.home();
+  async create({ visibility = "public", game = "kittens" } = {}) {
+    await this.home(game);
     await this.$("#name-input").fill(this.name);
     await this.$(visibility === "private" ? "#vis-private" : "#vis-public").click();
     await this.$("#create-btn").click();

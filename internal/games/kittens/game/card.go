@@ -5,7 +5,11 @@ import (
 	"math/rand"
 )
 
-// CardType enumerates every card in the Exploding Kittens Original Edition.
+// CardType enumerates every card this engine knows: the Exploding Kittens
+// Original Edition, then the Imploding Kittens expansion.
+//
+// The five collectible cats are kept contiguous because IsCat is a range check.
+// New kinds go on the end.
 type CardType int
 
 const (
@@ -22,6 +26,14 @@ const (
 	CatMelon
 	CatPotato
 	CatBeard
+
+	// Imploding Kittens expansion.
+	ImplodingKitten
+	Reverse
+	DrawFromBottom
+	FeralCat
+	AlterTheFuture
+	TargetedAttack
 )
 
 var cardNames = map[CardType]string{
@@ -38,6 +50,13 @@ var cardNames = map[CardType]string{
 	CatMelon:        "Cattermelon",
 	CatPotato:       "Hairy Potato Cat",
 	CatBeard:        "Beard Cat",
+
+	ImplodingKitten: "Imploding Kitten",
+	Reverse:         "Reverse",
+	DrawFromBottom:  "Draw From the Bottom",
+	FeralCat:        "Feral Cat",
+	AlterTheFuture:  "Alter the Future",
+	TargetedAttack:  "Targeted Attack",
 }
 
 // slug is the stable identifier the browser uses to pick card art and colours.
@@ -55,6 +74,13 @@ var cardSlugs = map[CardType]string{
 	CatMelon:        "cat-melon",
 	CatPotato:       "cat-potato",
 	CatBeard:        "cat-beard",
+
+	ImplodingKitten: "imploding",
+	Reverse:         "reverse",
+	DrawFromBottom:  "bottom",
+	FeralCat:        "feral-cat",
+	AlterTheFuture:  "alter",
+	TargetedAttack:  "targeted-attack",
 }
 
 func (t CardType) String() string {
@@ -69,16 +95,46 @@ func (t CardType) Slug() string { return cardSlugs[t] }
 
 // IsCat reports whether the type is one of the five collectible cat cards, which
 // have no effect alone and are only useful in matching sets.
+//
+// Deliberately excludes the Feral Cat: it plays *as* a cat but is not one of the
+// five kinds, and treating it as one would let a Three of a Kind demand "a Feral
+// Cat or anything like it". Use IsCatLike for the combo rules.
 func (t CardType) IsCat() bool { return t >= CatTaco && t <= CatBeard }
 
-// DemandableTypes lists the card kinds a Three of a Kind may name. Exploding
-// Kittens are left out: they are only ever in the deck or the discard, never in
-// a hand, so demanding one could not possibly succeed.
-func DemandableTypes() []CardType {
-	return []CardType{
+// IsCatLike reports whether the card may take part in a cat combo. The Feral Cat
+// is a wildcard: it stands in for whichever cat the rest of the set is.
+func (t CardType) IsCatLike() bool { return t.IsCat() || t == FeralCat }
+
+// Kills reports whether drawing this card takes a player out of the game. Both
+// kittens do; only one of them can be defused.
+func (t CardType) Kills() bool { return t == ExplodingKitten || t == ImplodingKitten }
+
+// AllTypes lists every kind of card in a variant's deck, in the printed order —
+// the kittens first, then the actions, then the cats. Used by the how-to-play
+// sheet, which shows one of each and so must follow the deck rather than carry
+// its own list.
+func AllTypes(v Variant) []CardType {
+	src := compositionFor(v)
+	out := make([]CardType, 0, len(src))
+	for _, c := range src {
+		out = append(out, c.Type)
+	}
+	return out
+}
+
+// DemandableTypes lists the card kinds a Three of a Kind may name, for the given
+// variant. Both kittens are left out: they are only ever in the deck or the
+// discard, never in a hand, so demanding one could not possibly succeed.
+func DemandableTypes(v Variant) []CardType {
+	out := []CardType{
 		Defuse, Nope, Attack, Skip, Favor, Shuffle, SeeTheFuture,
 		CatTaco, CatRainbow, CatMelon, CatPotato, CatBeard,
 	}
+	if v == Imploding {
+		out = append(out,
+			Reverse, DrawFromBottom, FeralCat, AlterTheFuture, TargetedAttack)
+	}
+	return out
 }
 
 // TypeFromSlug resolves the identifier clients use back to a card type. Needed
@@ -100,6 +156,11 @@ type Card struct {
 	// Name and Slug are denormalised so the redacted view is directly renderable.
 	Name string `json:"name"`
 	Slug string `json:"slug"`
+	// FaceUp is only ever true of the Imploding Kitten after somebody has drawn
+	// it once and put it back. Never sent to a client: the draw pile is not
+	// serialised at all, and whether the kitten is armed reaches the table as a
+	// single flag on the view rather than as a property of a card nobody can see.
+	FaceUp bool `json:"-"`
 	// Art is the face this particular copy wears, as a path the client resolves
 	// against the card-art route. Chosen once when the deck is built so that it
 	// travels with the card between deck, hand and discard, and so every player
@@ -133,11 +194,13 @@ func SetCardArt(variants map[string][]string) {
 	}
 }
 
-// composition is the Original Edition's 56-card breakdown.
-var composition = []struct {
+type tally struct {
 	Type  CardType
 	Count int
-}{
+}
+
+// composition is the Original Edition's 56-card breakdown.
+var composition = []tally{
 	{ExplodingKitten, 4},
 	{Defuse, 6},
 	{Nope, 5},
@@ -153,15 +216,35 @@ var composition = []struct {
 	{CatBeard, 4},
 }
 
-// fullDeck builds all 56 cards with sequential IDs, unshuffled.
+// implodingPack is the Imploding Kittens expansion: 20 cards shuffled into the
+// Original Edition. It is never a deck of its own — there are no Defuses in it,
+// and the box says so.
+var implodingPack = []tally{
+	{ImplodingKitten, 1},
+	{Reverse, 4},
+	{DrawFromBottom, 4},
+	{FeralCat, 4},
+	{AlterTheFuture, 4},
+	{TargetedAttack, 3},
+}
+
+// compositionFor is the full card list for a variant, before any is removed.
+func compositionFor(v Variant) []tally {
+	if v != Imploding {
+		return composition
+	}
+	return append(append([]tally(nil), composition...), implodingPack...)
+}
+
+// fullDeck builds every card of the variant with sequential IDs, unshuffled.
 //
 // Copies of the same card get different faces wherever the art pool is deep
 // enough to give them one: eighteen Defuses are printed and six are dealt, so a
 // table sees six different ways of defusing rather than the same one six times.
-func fullDeck(rng *rand.Rand) []Card {
+func fullDeck(v Variant, rng *rand.Rand) []Card {
 	var out []Card
 	id := 0
-	for _, c := range composition {
+	for _, c := range compositionFor(v) {
 		faces := pickFaces(c.Type.Slug(), c.Count, rng)
 		for i := 0; i < c.Count; i++ {
 			card := newCard(id, c.Type)

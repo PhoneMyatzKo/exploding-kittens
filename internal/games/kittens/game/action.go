@@ -12,7 +12,8 @@ const (
 	ActPass        ActionKind = "pass"         // decline to Nope
 	ActNopeExpired ActionKind = "nope_expired" // internal: the window timer fired
 	ActGiveCard    ActionKind = "give"         // Favor target hands a card over
-	ActPlaceKitten ActionKind = "place"        // reinsert a defused Kitten
+	ActPlaceKitten ActionKind = "place"        // put a drawn kitten back in the deck
+	ActAlterFuture ActionKind = "alter"        // submit a new order for the top of the deck
 )
 
 // Action is a single submitted move. Only the fields relevant to Kind are read.
@@ -23,6 +24,11 @@ type Action struct {
 	TargetID string // ActPlay for Favor and cat sets
 	Index    int    // ActPlaceKitten: 0 = top of deck, len(Draw) = bottom
 	Named    string // ActPlay for a three-cat set: the slug of the card demanded
+	// Order is ActAlterFuture's new arrangement of the top of the deck, given as
+	// positions rather than card IDs — [2,0,1] means "the third card goes on top".
+	// Positions, because a specific deck card's identity must never travel to a
+	// client, not even the one looking at it.
+	Order []int
 }
 
 var (
@@ -37,6 +43,8 @@ var (
 	ErrGameOver      = errors.New("the game is over")
 	ErrNoNopeCard    = errors.New("you don't have a Nope card")
 	ErrAlreadyPassed = errors.New("you already passed")
+	ErrBadOrder      = errors.New("that isn't a valid arrangement of those cards")
+	ErrNotInThisDeck = errors.New("that card isn't in this game")
 )
 
 // EventKind labels an entry in the shared play-by-play log.
@@ -60,6 +68,11 @@ const (
 	EvGameOver   EventKind = "game_over"   //
 	EvShuffled   EventKind = "shuffled"    //
 	EvNopeWindow EventKind = "nope_window" // a window opened; clients start a countdown
+
+	// Imploding Kittens expansion.
+	EvReversed EventKind = "reversed" // play changed direction
+	EvArmed    EventKind = "armed"    // the Imploding Kitten went back in face up
+	EvAltered  EventKind = "altered"  // somebody rearranged the top of the deck
 )
 
 // Event is one line of the game log. Cards carried by an event are only ever the

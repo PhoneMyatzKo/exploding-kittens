@@ -72,9 +72,20 @@ try {
     }
   });
 
-  await check("the playable tile invites you to play", async () => {
-    const cta = (await alex.$('.game-tile:not(.locked) .game-cta').textContent()).trim();
-    assert(/play/i.test(cta), `the call to action reads ${JSON.stringify(cta)}`);
+  await check("every playable tile invites you to play", async () => {
+    // Deliberately not written as "the" tile: there is more than one playable
+    // game now, and an assertion pinned to exactly one goes stale the moment
+    // another ships.
+    const ctas = await alex.page.$$eval(
+      ".game-tile:not(.locked) .game-cta",
+      (els) => els.map((e) => e.textContent.trim()),
+    );
+    const tiles = (await alex.games()).filter((t) => !t.locked).length;
+    assert(ctas.length === tiles, `${tiles} playable tiles but ${ctas.length} call-to-action pills`);
+    assert(ctas.length > 0, "no playable tiles at all");
+    for (const cta of ctas) {
+      assert(/play/i.test(cta), `a call to action reads ${JSON.stringify(cta)}`);
+    }
   });
 
   await check("every catalogued game gets a tile", async () => {

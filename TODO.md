@@ -27,6 +27,23 @@
   seeing a code. Only rooms you can actually enter are listed, so a room
   disappears once it's dealt or full.
 
+- ~~How to play: cover both games, add Burmese, show real cards~~ — the sheet
+  now lists exactly the cards the room's deck contains, illustrated with the
+  actual scans instead of emoji (the emoji stays as the fallback), and reads in
+  English or မြန်မာ with the choice remembered. Both languages are full
+  duplicates of the sheet in `index.html` so a translation stays editable as
+  prose; card names are left in English because that is what people say at the
+  table. **The Burmese needs a native reader's pass** — the prose is mine and the
+  game jargon is a guess in places.
+
+- ~~Imploding Kittens expansion~~ — all six card types (Imploding Kitten,
+  Reverse, Draw From the Bottom, Feral Cat, Alter the Future, Targeted Attack),
+  plus the sixth seat. A second tile rather than a fork of the engine: one
+  `game.Variant` decides the deck, and `internal/games` is the only place that
+  maps a menu slug onto it. Alter the Future sends **faces without card IDs** and
+  takes a permutation of positions back, so the leak scan stayed as strict as it
+  was — it now runs over both decks and fails if it never reaches that phase.
+
 - ~~Lay the main menu out as a shelf~~ — a header bar with the site name and the
   mute control, then the games as box-art tiles in a centred grid, two up on a
   phone. Replaced the narrow centred panel, which showed one game at a time.
@@ -66,8 +83,9 @@
 
 - Five Different Cards combo (take any card from the discard pile) — the only
   base-game combo still missing.
-- Imploding Kittens expansion: Reverse, Draw From The Bottom, Alter the Future,
-  Feral Cat, and 6-player support.
+- Streaking Kittens (a *different* expansion — one card that lets you hold an
+  Exploding Kitten in hand without exploding). Its art is already in `static/`,
+  which is why it looks like part of the Imploding pack; it is not.
 - Spectators for eliminated players (right now you watch the table you're on).
 - Persistence, so a server restart doesn't wipe a game in progress. — see
   "Serializable state" below; the seed change is the part that unblocks this.

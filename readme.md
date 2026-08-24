@@ -87,8 +87,32 @@ everyone gets 7 cards plus a guaranteed Defuse, the leftover Defuses go back in,
 and exactly **one fewer kitten than there are players** is shuffled in. Last
 player standing wins.
 
-Not included: the Imploding Kittens expansion, and the five-different-cards combo
-that takes a card from the discard pile.
+Not included: the five-different-cards combo that takes a card from the discard
+pile.
+
+### Imploding Kittens
+
+Pick **Imploding Kittens** on the menu and the deck is the Original Edition plus
+the expansion's 20 cards — the way the box works, since the pack has no Defuses
+and no deck of its own. It also seats a sixth player.
+
+| Card | Effect |
+| --- | --- |
+| Imploding Kitten ×1 | Replaces one of the Exploding Kittens. Drawn the first time it goes back into the deck **face up**, anywhere the drawer likes, costing no Defuse and ending their turn. Drawn again, that player is **out** — a Defuse will not save them. |
+| Reverse ×4 | Turn the order of play around, then end your turn without drawing. Under Attack it burns one turn, like Skip. |
+| Draw From the Bottom ×4 | End your turn by drawing the **bottom** card instead of the top. Exactly as risky. |
+| Feral Cat ×4 | A wildcard cat: it completes a pair or a trio with any of the five kinds, and two Feral Cats work together. |
+| Alter the Future ×4 | Look at the top three cards and put them back **in any order**. Only you see them. |
+| Targeted Attack ×3 | End your turn without drawing and make a player **of your choice** take two turns. Stacks like Attack. |
+
+The kitten arithmetic is why six players fit: a table needs one fewer kitten
+than there are players, and with the expansion one of them is the Imploding
+Kitten — so six players need the pack's one plus the Original's four, which is
+exactly what there is. Six printed Defuses also means exactly one each with none
+left over.
+
+The two decks never mix: a room records which it was created for, and the seat
+count, the demandable card list and the rules sheet all follow from it.
 
 ### Nope windows
 
@@ -126,6 +150,25 @@ the part a second game would share: the transport, the room loop, the portraits.
 That split is a filing decision, not an abstraction: there is exactly one game
 today, and `internal/room` is still written around this one's phases. See
 "Direction: multi-game core" in `TODO.md` for what would have to change.
+
+## How to play, on screen
+
+The **How to play** sheet in the lobby covers whichever deck the room was created
+for: the expansion's six cards appear only in an expansion room. It reads in
+**English or Burmese** (မြန်မာ), toggled in the sheet's header and remembered
+between sessions.
+
+Each card is illustrated with its actual scan rather than an emoji, because the
+thing a player is trying to do is recognise the card in their hand. The faces
+come from `GET /api/cards?game=…`, which returns one representative scan per
+kind; `paintRulesArt()` swaps them in over the emoji that ships in the markup, so
+a card with no art registered — or a face that fails to load — still reads.
+
+Both languages are complete duplicates of the sheet in `web/index.html`, one
+`<section class="rules-lang">` each. That keeps a translation editable as
+continuous prose instead of as a string table, which matters because it is prose.
+Card names stay in English in the Burmese text: that is what people say at the
+table, and it matches the words printed on the cards on screen.
 
 ## The game menu
 

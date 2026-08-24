@@ -47,17 +47,47 @@ func New(mgr *room.Manager) http.Handler {
 	})
 
 	// The kinds a Three of a Kind may demand. Served rather than duplicated in
-	// JavaScript so card names are written down in exactly one place.
+	// JavaScript so card names are written down in exactly one place. It depends
+	// on the deck, so the game is a query parameter — the expansion adds five more
+	// kinds somebody could be holding.
 	mux.HandleFunc("GET /api/cards", func(w http.ResponseWriter, r *http.Request) {
+		slug := r.URL.Query().Get("game")
+		if slug == "" {
+			slug = games.Kittens
+		}
+		variant, ok := games.VariantFor(slug)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no such game"})
+			return
+		}
 		type kind struct {
 			Name string `json:"name"`
 			Slug string `json:"slug"`
+			// Face is one representative scan, for the how-to-play sheet. A card
+			// with several printed faces gets its first; a card with none gets an
+			// empty string and the sheet falls back to its emoji.
+			Face string `json:"face,omitempty"`
 		}
-		out := make([]kind, 0, len(game.DemandableTypes()))
-		for _, t := range game.DemandableTypes() {
-			out = append(out, kind{Name: t.String(), Slug: t.Slug()})
+
+		faces := static.CardArtVariants()
+		build := func(types []game.CardType) []kind {
+			out := make([]kind, 0, len(types))
+			for _, t := range types {
+				k := kind{Name: t.String(), Slug: t.Slug()}
+				if v := faces[t.Slug()]; len(v) > 0 {
+					k.Face = v[0]
+				}
+				out = append(out, k)
+			}
+			return out
 		}
-		writeJSON(w, http.StatusOK, map[string][]kind{"demandable": out})
+
+		writeJSON(w, http.StatusOK, map[string][]kind{
+			"demandable": build(game.DemandableTypes(variant)),
+			// Every kind in the deck, so the rules sheet can show a real card
+			// instead of an emoji — and only the cards this deck contains.
+			"kinds": build(game.AllTypes(variant)),
+		})
 	})
 
 	// The menu is built from this, so which games exist is written down once, in
@@ -90,8 +120,11 @@ func New(mgr *room.Manager) http.Handler {
 			})
 			return
 		}
+		// Playable implies known, so this cannot fail — but resolving it here keeps
+		// the slug-to-deck mapping out of the room entirely.
+		variant, _ := games.VariantFor(slug)
 
-		rm := mgr.Create(room.Options{Public: public, Game: slug})
+		rm := mgr.Create(room.Options{Public: public, Game: slug, Variant: variant})
 		visibility := "private"
 		if public {
 			visibility = "public"

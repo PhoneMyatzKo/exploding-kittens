@@ -34,6 +34,7 @@ Stop the server afterwards with
 | `HEADED` | unset | `1` shows the browsers |
 | `SLOWMO` | `0` | Milliseconds between actions, for watching |
 | `MOBILE` | unset | `1` runs `play.js` on a phone viewport |
+| `GAME` | `kittens` | Which deck `play.js` deals — `kittens-imploding` for the expansion |
 
 Screenshots land in `shots/` (gitignored).
 
@@ -47,11 +48,15 @@ Screenshots land in `shots/` (gitignored).
 | `logtest.js` | The log behaves like a chat box: always on screen, does not overlap the hand, does not yank a scrolled reader, follows when pinned, collapses and remembers it |
 | `publiclobby.js` | Only joinable rooms are listed — private, dealt and full ones drop out; joining from the list; visibility remembered |
 | `modals.js` | The Favor picker fits on screen and every card in it can be reached, on a laptop, a small window and two phone sizes — plus a hand twice the size a deal can produce |
+| `rules.js` | The how-to-play sheet, per deck: it lists exactly the cards this deck contains, shows them as *loaded* card pictures rather than emoji, reads in Burmese with the art intact, and remembers the language |
+| `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never
-reached a defuse is a weaker run than one that did, and it says so.
+reached a defuse is a weaker run than one that did, and it says so. `run.js`
+drives it twice, once per deck, because the expansion's cards only ever come up
+in a game dealt with them.
 
 Because the deal is random, a check that needs particular cards has to be
 possible on nearly every run or it is not worth having. `selection.js` seats a
@@ -79,6 +84,11 @@ Three traps that have caught this harness before:
   `false`.
 - **An empty `<ul>` has zero size**, so Playwright treats it as hidden. Wait on
   a sibling that always has text — `#browser-status`, not `#browser-list`.
+- **A `const` declared below the top-level code is in its TDZ when that code
+  runs.** These scripts execute top to bottom with their helpers underneath, so
+  putting shared state next to the helper that uses it fails with "Cannot access
+  X before initialization" — and only on the path that reads it, so it looks like
+  a logic bug. Declare shared state at the top of the file.
 - **`offsetTop` is relative to the nearest positioned ancestor**, not to the
   scroll box an element sits in. Arithmetic on it to decide "can this be
   scrolled to" quietly measures nothing. Scroll to the element and ask the

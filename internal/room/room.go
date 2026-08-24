@@ -47,6 +47,7 @@ type ClientMsg struct {
 	Index    int    `json:"index"`
 	Avatar   string `json:"avatar"`
 	Named    string `json:"named"`
+	Order    []int  `json:"order"`
 }
 
 var (
@@ -79,15 +80,19 @@ type Options struct {
 	// without interpreting it: which games exist, and which are playable, is the
 	// server's business, not the table's.
 	Game string
+	// Variant is which card sets get dealt. Resolved from the slug by the
+	// catalogue before the room exists, so the room never has to know the mapping.
+	Variant game.Variant
 }
 
 // Room is one table. All fields below cmds are owned exclusively by run().
 type Room struct {
 	Code string
-	// Public and Game are set once before run() starts and never written again,
-	// so reading them needs no synchronisation.
-	Public bool
-	Game   string
+	// Public, Game and Variant are set once before run() starts and never written
+	// again, so reading them needs no synchronisation.
+	Public  bool
+	Game    string
+	Variant game.Variant
 
 	cmds      chan command
 	done      chan struct{}
@@ -166,6 +171,7 @@ func newRoom(code string, opts Options) *Room {
 		Code:      code,
 		Public:    opts.Public,
 		Game:      opts.Game,
+		Variant:   opts.Variant,
 		cmds:      make(chan command, 32),
 		done:      make(chan struct{}),
 		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
@@ -285,7 +291,7 @@ func (r *Room) handleJoin(c cmdJoin) {
 		c.reply <- joinResult{Err: ErrInProgress}
 		return
 	}
-	if len(r.members) >= game.MaxPlayers {
+	if len(r.members) >= r.capacity() {
 		c.reply <- joinResult{Err: ErrRoomFull}
 		return
 	}
@@ -390,7 +396,7 @@ func (r *Room) handleStart(m *member) {
 			present = append(present, mm)
 		}
 	}
-	s, err := game.NewGame(seats, r.rng)
+	s, err := game.NewGame(seats, r.Variant, r.rng)
 	if err != nil {
 		r.sendErr(m, err.Error())
 		return
@@ -481,7 +487,7 @@ func (r *Room) applyAction(a game.Action) error {
 func toAction(playerID string, m ClientMsg) (game.Action, bool) {
 	a := game.Action{
 		PlayerID: playerID, CardIDs: m.CardIDs, TargetID: m.TargetID,
-		Index: m.Index, Named: m.Named,
+		Index: m.Index, Named: m.Named, Order: m.Order,
 	}
 	switch m.Type {
 	case "play":
@@ -496,6 +502,8 @@ func toAction(playerID string, m ClientMsg) (game.Action, bool) {
 		a.Kind = game.ActGiveCard
 	case "place":
 		a.Kind = game.ActPlaceKitten
+	case "alter":
+		a.Kind = game.ActAlterFuture
 	default:
 		return a, false
 	}
@@ -537,6 +545,8 @@ func (r *Room) waitingOn() *member {
 		return r.find(r.state.CurrentID())
 	case game.PhaseFavor:
 		return r.find(r.state.AwaitingGiftFrom())
+	case game.PhaseAlter:
+		return r.find(r.state.AlteringID())
 	}
 	return nil
 }
@@ -574,6 +584,13 @@ func (r *Room) actForAbsentPlayer() {
 			return
 		}
 		a = game.Action{Kind: game.ActGiveCard, PlayerID: m.ID, CardIDs: []int{p.Hand[0].ID}}
+	case game.PhaseAlter:
+		// Least destructive is to put them back exactly as they were.
+		order := make([]int, len(r.state.AlterFaces()))
+		for i := range order {
+			order[i] = i
+		}
+		a = game.Action{Kind: game.ActAlterFuture, PlayerID: m.ID, Order: order}
 	default:
 		return
 	}
@@ -704,7 +721,7 @@ func (r *Room) summary() Summary {
 	s := Summary{
 		Code:     r.Code,
 		Game:     r.Game,
-		Capacity: game.MaxPlayers,
+		Capacity: r.capacity(),
 		Public:   r.Public,
 		Players:  r.connectedCount(),
 	}
@@ -718,9 +735,14 @@ func (r *Room) summary() Summary {
 	}
 	// A room with nobody in it is a room the reaper has not got to yet; offering
 	// it would hand somebody an empty table with no host.
-	s.Joinable = r.state == nil && s.Players > 0 && s.Players < game.MaxPlayers
+	s.Joinable = r.state == nil && s.Players > 0 && s.Players < r.capacity()
 	return s
 }
+
+// capacity is how many seats this table has. It depends on the variant: the
+// Imploding Kittens pack brings a fifth kitten, which is what lets a sixth
+// player in.
+func (r *Room) capacity() int { return game.MaxPlayersFor(r.Variant) }
 
 // Summarize asks the room to describe itself. Returns false if the room is
 // shutting down or wedged, so a slow room cannot stall the whole listing.

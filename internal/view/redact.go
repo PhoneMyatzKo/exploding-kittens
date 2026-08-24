@@ -58,6 +58,16 @@ type Pending struct {
 	TotalMs     int64 `json:"totalMs"`
 }
 
+// FaceCard is a card the viewer may look at but must not be able to name later:
+// the top of the deck during Alter the Future. Deliberately has no ID — an ID
+// would let a client follow that specific card once it is back in the pile, and
+// reordering only needs positions. The client sends a permutation back.
+type FaceCard struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+	Art  string `json:"art,omitempty"`
+}
+
 // Me carries the viewer's private information and the affordances the current
 // phase grants them. The client renders buttons straight off these booleans and
 // validates nothing itself.
@@ -71,6 +81,11 @@ type Me struct {
 	CanPass   bool        `json:"canPass"`
 	MustGive  bool        `json:"mustGive"`
 	MustPlace bool        `json:"mustPlace"`
+	// MustAlter and Alter drive the reorder prompt. Carried on the state rather
+	// than sent as a one-off private event so that a reload mid-decision gets the
+	// prompt back — this phase blocks the whole table until it is answered.
+	MustAlter bool       `json:"mustAlter"`
+	Alter     []FaceCard `json:"alter,omitempty"`
 }
 
 // Entry is one line of the shared play-by-play.
@@ -102,6 +117,16 @@ type View struct {
 	TurnsRemaining int        `json:"turnsRemaining"`
 	Pending        *Pending   `json:"pending,omitempty"`
 	WinnerID       string     `json:"winnerId,omitempty"`
+
+	// Direction is +1 or -1, so the table can show which way play is going once a
+	// Reverse has been played.
+	Direction int `json:"direction"`
+	// ImplodingArmed says the Imploding Kitten is back in the deck face up and
+	// will take whoever reaches it. Public: everybody watched it go in.
+	ImplodingArmed bool `json:"implodingArmed,omitempty"`
+	// Placing is the slug of the kitten being put back during the defuse phase,
+	// so the prompt can tell hiding one apart from arming one.
+	Placing string `json:"placing,omitempty"`
 
 	// Public is the room's visibility, so the lobby can say whether the room is
 	// advertised. Game is the catalogue slug, which tells the client which
@@ -143,6 +168,9 @@ func For(code string, members []Membership, s *game.State, viewerID string, cd C
 		DiscardTop:     s.DiscardTop(),
 		TurnsRemaining: s.TurnsRemaining,
 		WinnerID:       s.WinnerID,
+		Direction:      s.PlayDirection(),
+		ImplodingArmed: s.ImplodingArmed(),
+		Placing:        s.Placing(),
 		Log:            log,
 	}
 	if log == nil {
@@ -188,6 +216,13 @@ func For(code string, members []Membership, s *game.State, viewerID string, cd C
 			CanPass:   s.CanNope(p.ID) && !s.HasPassed(p.ID),
 			MustGive:  s.AwaitingGiftFrom() == p.ID,
 			MustPlace: s.Phase == game.PhaseDefuse && s.CurrentID() == p.ID,
+			MustAlter: s.AlteringID() == p.ID,
+		}
+		if v.Me.MustAlter {
+			// Faces only. The IDs stay behind: see FaceCard.
+			for _, c := range s.AlterFaces() {
+				v.Me.Alter = append(v.Me.Alter, FaceCard{Name: c.Name, Slug: c.Slug, Art: c.Art})
+			}
 		}
 	} else {
 		v.Me = Me{ID: viewerID, Hand: []game.Card{}}
