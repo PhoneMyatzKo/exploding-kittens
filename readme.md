@@ -139,6 +139,7 @@ internal/view     redaction: turns the game into a per-player payload
 internal/games/
   kittens/game    the rules, as a pure function
 web/              browser client (no build step), embedded into the binary
+  games/<slug>/   one game's own markup, injected at runtime by mountGame()
 web/testing/      Playwright checks that drive the real client (not in go test)
 static/           portraits (/avatars), music (/audio), and per-game media:
                   card scans (/cards), effects footage (/video)
@@ -279,31 +280,107 @@ selected.
 
 ## Theme
 
-Five values, and nothing outside them:
+One palette per game, and nothing outside it. Exploding Kittens':
 
 ```
-crimson  #820a12    gold  #fbc240    paper  #fdfeff    grey  #5f5d5c
+brand  #820a12    accent  #fbc240    surface  #fdfeff    muted-ink  #5f5d5c
 gradient #e72834 → #ffc942
 ```
 
-Every other colour in `style.css` is one of those alpha-composited over
-another, annotated with the mix it stands for. Two consequences worth knowing
-before editing it:
+Declared as channel triples (`--brand-rgb: 130 10 18`) because most are also
+needed at partial alpha, with the solid forms derived via `rgb(var(…))` so each
+colour has exactly one source. Every other colour in `style.css` is one of them
+alpha-composited over another, annotated with the mix it stands for.
 
-- **Two surface families.** Crimson is the app ground; `.panel`, `.modal-box`,
-  `.log-panel`, `.toast`, `.nope-bar` and `.card` switch to paper. Each family
-  declares its own `--ink`/`--muted`/`--line`, so component rules never need to
-  know which one they are on. The palette forces the split — grey is 1.9:1 on
-  crimson but 6.5:1 on paper.
+**Nothing below the palette block names a hue.** Component rules read semantic
+tokens — `--bg`, `--ink`, `--muted`, `--line`, `--accent`, `--danger` — and never
+learn which game is on screen. A new game is therefore a new palette block and
+nothing else: `setTheme()` in `app.js` puts the slug on `<html data-game>` and
+`:root[data-game="uno"]` redefines the tokens. It has to be `<html>` rather than
+`<body>`, because the root element is what paints the overscroll gutter.
+
+Four things worth knowing before editing it:
+
+- **Two surface families.** The brand is the app ground; `.panel`, `.modal-box`,
+  `.log-panel`, `.toast`, `.nope-bar` and `.card` switch to the surface family.
+  Each declares its own `--ink`/`--muted`/`--line`, so component rules never need
+  to know which one they are on. Contrast forces the split — `--muted-ink` is
+  1.9:1 on crimson but 6.5:1 on paper.
 - **The gradient cannot carry text.** Paper drops to 1.6:1 against its gold
   end, and crimson to 2.4:1 against its red end, so no ink is readable across
   the whole sweep. It is therefore used only on decorative surfaces, or behind
   a crimson scrim (the deck back) that brings the label back to 6.2:1. Buttons
   and other labelled controls take solid gold with crimson ink, at 6.4:1.
+- **`--shadow` and `--scrim` are separate, and are the only values allowed
+  outside the palette.** A shadow lifts an element off the ground and may need to
+  become a glow on a dark ground; a scrim darkens the card scans so a white label
+  survives on top of them, and stays black in every palette. One token could not
+  do both — a yellow modal backdrop is not a backdrop.
+- **The brand is not automatically ink.** Crimson happens to be dark enough to
+  serve as the accent's ink, the surface family's ink and the error colour all at
+  once. A brighter brand is not: `#ec2229` is 4.4:1 on white and 3.1:1 on gold,
+  both failing AA. Hence `--accent-ink` and `--danger` exist as tokens of their
+  own rather than being spelled `--brand`.
 
 Card type coding collapses to three families, since thirteen hues cannot fit
 five colours: a gold band for the powerless cat cards, the gradient for cards
 that do something, solid crimson for the Exploding Kitten.
+
+## The client, shell and game
+
+No build step: plain ES modules, loaded natively, embedded into the binary.
+
+```
+web/index.html            the shell's markup, plus a <div id="game-root">
+web/app.js                the shell: socket, menu, browser, lobby, palette, mounting
+web/core/                 modules both halves share
+  dom.js                  $ and hide
+  store.js                every localStorage key
+  sound.js                the audio engine; games register their own assets
+  toast.js                passing notices
+  modal.js                the one blocking prompt, with no game's content in it
+  feed.js                 log-sequence diffing and the play-by-play
+  cinema.js               the one-at-a-time flash player
+web/games/<slug>/
+  table.html              that game's screens, injected into #game-root
+  index.js                that game's client, loaded on demand
+```
+
+The shell knows a room has seats and a log. It does not know what a card is —
+`app.js` does not contain the word. Everything from the moment the cards are
+dealt is the game's: the table, the hand, the Nope window, the cinematics, the
+rules text and the prompts.
+
+`mountGame(slug)` fetches the template and dynamically imports the module;
+`unmountGame()` calls the game's own `unmount()` and then drops the markup. The
+contract between them is documented in full at `mountGame()`. Four things about
+it are worth knowing before adding a game:
+
+- **A game reaches the shell only through the `ctx` handed to `mount()`**, and
+  every member of it is a function — `view()`, `me()`, `nameOf()`, `send()`,
+  `rerender()`, `toast()`, `avatarChip()`. Deliberately: a game that held a copy
+  of the view would render the state before last.
+- **The shell decides which screen is up; the game decides what its screen is
+  made of.** `render(v)` shows the table and `leaveTable()` takes it away again,
+  so no id from a game's template is ever named in `app.js` — which is the test
+  for whether the split is real. The rules panel survives `leaveTable()` on
+  purpose, because the button that opens it sits in the lobby.
+- **Controls in the injected markup cannot be wired at module load** the way the
+  shell's are. The game's `mount()` runs on every mount and does that.
+- **`render()` gates on the mount.** An invite link learns its game from the
+  room's own first state, so a socket message routinely arrives before the table
+  exists; `mountGame()` calls `render()` back once the markup is in.
+- **Leaving a room unmounts rather than hides.** The game holds a round's worth of
+  state — a selection, a covered hand, a countdown — and none of it should survive
+  into the next room. Re-entering re-fetches a template the browser has cached.
+
+`core/feed.js` is the one module worth reading before touching anything nearby.
+It owns the two log-sequence counters — `seenSeq` for what has been animated,
+`logSeq` for what has been written down — and every resync case: a fresh
+connection, a new round, and a gap meaning events happened while the tab was
+away. Getting those wrong is what makes an explosion fire twice or a log go
+silently stale, which is exactly why it is shared rather than reimplemented per
+game.
 
 ## Music
 

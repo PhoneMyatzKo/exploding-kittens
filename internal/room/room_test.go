@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"boardgame/kittens/internal/games/kittens"
 	"boardgame/kittens/internal/view"
 	"boardgame/kittens/static"
 )
@@ -327,8 +328,8 @@ func TestNopeWindowLengthReachesClients(t *testing.T) {
 			t.Skip("game ended before any Nope window opened")
 		}
 		if v.Pending != nil {
-			if got := v.Pending.TotalMs; got != nopeWindow.Milliseconds() {
-				t.Fatalf("pending.totalMs = %d, want %d", got, nopeWindow.Milliseconds())
+			if got := v.Pending.TotalMs; got != kittens.NopeWindow.Milliseconds() {
+				t.Fatalf("pending.totalMs = %d, want %d", got, kittens.NopeWindow.Milliseconds())
 			}
 			if v.Pending.RemainingMs <= 0 || v.Pending.RemainingMs > v.Pending.TotalMs {
 				t.Fatalf("remainingMs = %d, want it inside (0, %d]",

@@ -1,1 +1,7 @@
-﻿*.exe
+*.exe
+
+# Working files that sit next to the assets but are not assets themselves: the
+# downloaded audio a clip was cut from is tens of megabytes and does not belong
+# in history. static.go embeds by extension, so these never reach the binary
+# either.
+static/src/audio/source.*

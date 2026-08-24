@@ -1,0 +1,220 @@
+<!-- UNO — everything on screen once the cards are dealt.
+     Injected by mountGame() in app.js rather than living in index.html, so the
+     shell (menu, home, public lobby, lobby, modal, toasts) is the only markup
+     shared between games.
+
+     The structural ids and classes — table, seats, deck, discard, hand, log —
+     are deliberately the same names Exploding Kittens uses. Only one game is
+     ever mounted at a time, so they cannot collide, and sharing them means the
+     stylesheet and the browser tests read one table rather than one per game.
+     The ids that are UNO's alone are prefixed uno-. app.js names none of them. -->
+
+<section id="table" class="screen table" hidden>
+  <header class="topbar">
+    <span id="table-code" class="pill"></span>
+    <span id="turn-banner" class="turn-banner"></span>
+    <span id="sound-table"></span>
+    <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
+  </header>
+
+  <div id="seats" class="seats"></div>
+
+  <!-- Table and log sit side by side once there's width; stacked on a phone. -->
+  <div class="table-body">
+    <div class="center">
+      <div class="deck-stack">
+        <button id="deck" class="deck" type="button">
+          <span class="deck-strip">
+            <span class="deck-label">Draw</span>
+            <span id="deck-count" class="deck-count"></span>
+          </span>
+        </button>
+        <p id="uno-colour" class="uno-colour" aria-live="polite"></p>
+      </div>
+      <div id="discard" class="discard"></div>
+    </div>
+
+    <aside id="log-panel" class="log-panel">
+      <button id="log-collapse" class="log-head" aria-expanded="true"
+              aria-controls="log" title="Hide the log">
+        <strong>Play by play</strong>
+        <span id="log-caret" class="caret">▾</span>
+      </button>
+      <ol id="log" class="log" aria-live="polite"></ol>
+    </aside>
+  </div>
+
+  <!-- One row, three jobs: naming a colour, answering a Draw Four, and saying
+       which of those is going on. Whichever is live, it is always the thing the
+       table is waiting for. -->
+  <div id="uno-prompt" class="target-row" hidden>
+    <span id="uno-prompt-label" class="target-label"></span>
+    <div id="uno-prompt-actions" class="target-buttons"></div>
+  </div>
+
+  <footer class="handbar">
+    <div id="hand" class="hand"></div>
+    <div class="actions">
+      <button id="uno-call" class="btn primary" hidden></button>
+      <button id="uno-catch" class="btn nope" hidden></button>
+      <button id="uno-pass" class="btn ghost small" hidden>Keep it</button>
+      <span id="hint" class="hint"></span>
+    </div>
+  </footer>
+</section>
+
+<!-- ───────────────────────── rules ───────────────────────── -->
+<aside id="rules-panel" class="rules-panel" hidden>
+  <div class="rules-head">
+    <strong>How to play</strong>
+    <button id="rules-close" class="btn ghost small">Close</button>
+  </div>
+  <div class="rules-body">
+    <p><b>Be the first to play your last card.</b> The winner scores what everybody
+      else is still holding.</p>
+
+    <h3>The deal</h3>
+    <p>Seven cards each. One card is turned face up to start the pile, and if it
+      has a symbol on it, that symbol happens to the first player straight away.</p>
+
+    <h3>Your turn</h3>
+    <p>Play one card that matches the pile by <b>colour</b> or by <b>symbol</b> —
+      or any wild. Can't play? Take one from the deck. If it plays, you may put it
+      straight down; if it doesn't, your turn is over.</p>
+
+    <h3>The cards</h3>
+    <dl class="rules-cards">
+      <dt>0–9</dt>
+      <dd>Match the colour, or the same number in any colour.</dd>
+      <dt>⊘ Skip</dt>
+      <dd>The next player loses their turn.</dd>
+      <dt>⇄ Reverse</dt>
+      <dd>Play turns around and comes back the other way. With two players it
+        simply comes straight back to you.</dd>
+      <dt>+2 Draw Two</dt>
+      <dd>The next player takes two cards and loses their turn. They do not stack
+        — one Draw Two, one victim.</dd>
+      <dt>Wild</dt>
+      <dd>Playable on anything. You name the colour that has to be followed.</dd>
+      <dt>Wild Draw Four</dt>
+      <dd>Name the colour, and the next player takes four and loses their turn.
+        You are only allowed this one when you have <b>no card of the colour in
+        force</b> — see below.</dd>
+    </dl>
+
+    <h3>Calling the bluff</h3>
+    <p>A Wild Draw Four played while you did hold that colour is a bluff, and the
+      player it lands on may <b>challenge</b> instead of drawing. They get to see
+      your hand: if you bluffed, you take the four cards and their turn goes
+      ahead as normal. If you were honest, they take six.</p>
+
+    <h3>Saying UNO</h3>
+    <p>Down to one card, say <b>UNO!</b> — the button by your hand. Forget, and
+      anybody who notices before the next player has finished their turn can call
+      you out, and you draw two.</p>
+
+    <h3>Running out of deck</h3>
+    <p>When the draw pile is gone, the pile of played cards is shuffled and
+      becomes the new deck, leaving the top card where it is.</p>
+
+    <h3>Scoring</h3>
+    <p>Numbers are worth their face value, Skip, Reverse and Draw Two twenty each,
+      and either wild fifty.</p>
+  </div>
+</aside>
+
+<style>
+  /* Scoped to this game because the markup above is unmounted with it: the rules
+     that size an UNO card have nothing to say about any other table.
+
+     The four card inks live in cards.js, not here. They are the game's own and
+     do not re-theme, so putting them in a stylesheet would be inviting a
+     palette to override them. */
+
+  .uno-card {
+    width: var(--card-w);
+    height: var(--card-h);
+    flex: 0 0 auto;
+    border-radius: 10px;
+    box-shadow: 0 6px 14px rgb(var(--scrim-rgb) / .45);
+    /* The SVG is decoration; the wrapper carries the label and the click. */
+    line-height: 0;
+    background: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  #hand .uno-card {
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  #hand .uno-card.playable:hover,
+  #hand .uno-card.playable:focus-visible {
+    transform: translateY(-10px);
+    box-shadow: 0 0 0 3px var(--accent), 0 12px 24px rgb(var(--scrim-rgb) / .5);
+    outline: none;
+  }
+  /* Unplayable cards stay legible rather than vanishing: knowing what you are
+     holding is most of the game. */
+  #hand .uno-card.dim { opacity: .45; cursor: not-allowed; }
+
+  #discard .uno-card { width: var(--card-w); height: var(--card-h); }
+
+  /* A hand shown in a prompt — what a challenge entitles you to see — is for
+     reading, not playing, and can be a dozen cards after somebody has been made
+     to draw twice. At hand size that is a modal several screens tall. */
+  #modal-cards .uno-card {
+    width: 58px;
+    height: 83px;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+
+  /* The colour in force, which is not always the top card's own. */
+  .uno-colour {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 6px 0 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    min-height: 20px;
+  }
+  .uno-colour i {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgb(var(--surface-rgb) / .5);
+  }
+
+  .uno-swatch {
+    width: 46px;
+    height: 66px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    line-height: 0;
+    cursor: pointer;
+    transition: transform .12s ease;
+  }
+  .uno-swatch:hover, .uno-swatch:focus-visible { transform: translateY(-4px); outline: none; }
+
+  /* The seat of whoever is down to one card. Loud on purpose: spotting it is the
+     whole mechanic. */
+  .seat.uno-one .seat-meta { color: var(--accent); font-weight: 800; }
+  .uno-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .5px;
+  }
+  .uno-badge.quiet { background: transparent; color: var(--muted); border: 1px dashed var(--line); }
+</style>

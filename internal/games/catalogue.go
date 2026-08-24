@@ -7,15 +7,17 @@
 // keeps the menu from being the thing every future game has to be wired into.
 package games
 
-import "boardgame/kittens/internal/games/kittens/game"
+import (
+	kittensgame "boardgame/kittens/internal/games/kittens/game"
+	unogame "boardgame/kittens/internal/games/uno/game"
+)
 
-// Kittens is the slug rooms default to, so an older client that knows nothing
-// about games still gets a game. KittensImploding is the same engine dealing the
-// Original Edition plus the Imploding Kittens pack — the expansion has no
-// Defuses and no deck of its own, so it is only ever playable combined.
+// Slugs. Rooms default to Kittens, so an older client that knows nothing about
+// games still gets a game.
 const (
-	Kittens          = "kittens"
+	Kittens = "kittens"
 	KittensImploding = "kittens-imploding"
+	UNO     = "uno"
 )
 
 // Info is one tile on the menu.
@@ -24,12 +26,9 @@ type Info struct {
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
 	Emoji   string `json:"emoji"`
-	// Cover is the box art for the tile, or empty for a game with none — the
-	// menu falls back to the emoji on a plain field, so an unillustrated game
-	// still gets a tile rather than a hole.
 	Cover string `json:"cover,omitempty"`
-	Min   int    `json:"min"`
-	Max   int    `json:"max"`
+	Min     int    `json:"min"`
+	Max     int    `json:"max"`
 	// Playable is false for a game that is announced but not built. The menu
 	// shows those greyed out rather than hiding them: an empty-looking hub reads
 	// as broken, and "coming soon" is information.
@@ -41,20 +40,17 @@ var catalogue = []Info{
 	{
 		Slug: Kittens, Name: "Exploding Kittens", Tagline: "Draw a kitten and you're out. Don't draw a kitten.",
 		Emoji: "💥", Cover: "/cards/background.jpeg",
-		Min: game.MinPlayers, Max: game.MaxPlayersFor(game.Original), Playable: true,
+		Min: kittensgame.MinPlayers, Max: kittensgame.MaxPlayers, Playable: true,
 	},
 	{
 		Slug: KittensImploding, Name: "Imploding Kittens",
 		Tagline: "The expansion: reversals, wildcards, and one kitten no Defuse can stop.",
 		Emoji:   "🌀", Cover: "/cards/imploding/Imploding-Kitten.jpg",
-		Min: game.MinPlayers, Max: game.MaxPlayersFor(game.Imploding), Playable: true,
+		Min: kittensgame.MinPlayers, Max: kittensgame.MaxPlayersFor(kittensgame.Imploding), Playable: true,
 	},
-	// Taglines describe the game rather than its status: the tile already carries
-	// a "soon" badge, and saying it twice wastes the only line there is to say
-	// what the game actually is.
 	{
-		Slug: "uno", Name: "UNO", Tagline: "Match the colour or the number.",
-		Emoji: "🎴", Min: 2, Max: 10, Playable: false,
+		Slug: UNO, Name: "UNO", Tagline: "Match the colour or the number.",
+		Emoji: "🎴", Min: unogame.MinPlayers, Max: unogame.MaxPlayers, Playable: true,
 	},
 	{
 		Slug: "uno-no-mercy", Name: "UNO No Mercy", Tagline: "Stacking draws, no way out.",
@@ -80,12 +76,12 @@ func Playable(slug string) bool {
 // VariantFor maps a catalogue slug onto the card sets it deals. This is the only
 // place the mapping lives: the room carries a variant it does not interpret, and
 // the engine has never heard of a slug.
-func VariantFor(slug string) (game.Variant, bool) {
+func VariantFor(slug string) (kittensgame.Variant, bool) {
 	switch slug {
 	case Kittens:
-		return game.Original, true
+		return kittensgame.Original, true
 	case KittensImploding:
-		return game.Imploding, true
+		return kittensgame.Imploding, true
 	}
 	return "", false
 }

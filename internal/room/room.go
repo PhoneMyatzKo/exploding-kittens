@@ -16,16 +16,12 @@ import (
 	"sync"
 	"time"
 
-	"boardgame/kittens/internal/games/kittens/game"
-	"boardgame/kittens/internal/view"
+	"boardgame/kittens/internal/core"
+	"boardgame/kittens/internal/games"
 	"boardgame/kittens/static"
 )
 
 const (
-	// nopeWindow is how long an action sits on the table before it resolves. It is
-	// sent to clients with every open window, so the countdown bar cannot drift
-	// out of step with it.
-	nopeWindow = 20 * time.Second
 	// idleGrace is how long the table waits for a disconnected player who is
 	// holding everyone up before acting on their behalf.
 	idleGrace = 25 * time.Second
@@ -39,16 +35,10 @@ type Sender interface {
 	Close()
 }
 
-// ClientMsg is an inbound message from a browser.
-type ClientMsg struct {
-	Type     string `json:"type"`
-	CardIDs  []int  `json:"cardIds"`
-	TargetID string `json:"targetId"`
-	Index    int    `json:"index"`
-	Avatar   string `json:"avatar"`
-	Named    string `json:"named"`
-	Order    []int  `json:"order"`
-}
+// ClientMsg is an inbound message from a browser. Defined in internal/core
+// because both the transport and every game's rules have to agree on it, and
+// neither of those may import the other.
+type ClientMsg = core.ClientMsg
 
 var (
 	ErrRoomFull    = errors.New("this room is full")
@@ -82,7 +72,7 @@ type Options struct {
 	Game string
 	// Variant is which card sets get dealt. Resolved from the slug by the
 	// catalogue before the room exists, so the room never has to know the mapping.
-	Variant game.Variant
+	//Variant game.Variant
 }
 
 // Room is one table. All fields below cmds are owned exclusively by run().
@@ -92,7 +82,7 @@ type Room struct {
 	// again, so reading them needs no synchronisation.
 	Public  bool
 	Game    string
-	Variant game.Variant
+	//Variant game.Variant
 
 	cmds      chan command
 	done      chan struct{}
@@ -100,16 +90,22 @@ type Room struct {
 
 	members []*member
 	seq     int
-	state   *game.State
-	logbuf  []view.Entry
-	logSeq  int
-	rng     *rand.Rand
+	// game is the rules this table is playing, created with the room and reused
+	// across rounds. The room never inspects it: what a card is, whose turn it is
+	// and what a legal move looks like are all behind the interface.
+	game   core.Game
+	logbuf []core.Entry
+	logSeq int
+	rng    *rand.Rand
 
-	// Nope window bookkeeping.
-	nopeTimer    *time.Timer
-	nopeDeadline time.Time
-	inWindow     bool
-	lastNopes    int
+	// Action-window bookkeeping. Some games let the rest of the table interrupt a
+	// play for a few seconds (Exploding Kittens' Nope); the room runs the clock
+	// for them and knows nothing else about it.
+	windowTimer    *time.Timer
+	windowDeadline time.Time
+	windowLength   time.Duration
+	inWindow       bool
+	lastToken      int
 
 	// Disconnected-player watchdog.
 	idleTimer *time.Timer
@@ -167,19 +163,35 @@ type joinResult struct {
 }
 
 func newRoom(code string, opts Options) *Room {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	slug := opts.Game
+	if slug == "" {
+		slug = games.Kittens
+	}
+	g, err := games.New(slug, rng)
+	if err != nil {
+		// Unbuilt games are refused at POST /api/rooms, so this is a slug that got
+		// past that — a stale client or a hand-written request. Dealing the default
+		// beats opening a table nothing can play.
+		log.Printf("room %s: %v, dealing %s instead", code, err, games.Kittens)
+		slug = games.Kittens
+		g, _ = games.New(slug, rng)
+	}
 	r := &Room{
 		Code:      code,
 		Public:    opts.Public,
-		Game:      opts.Game,
-		Variant:   opts.Variant,
+		//Variant:   opts.Variant,
+		//Game:      opts.Game,
+		Game:      slug,
+		game:      g,
 		cmds:      make(chan command, 32),
 		done:      make(chan struct{}),
-		rng:       rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:       rng,
 		lastEmpty: time.Now(),
 	}
 	// Timers start stopped; Go 1.23+ guarantees no stale value survives Stop.
-	r.nopeTimer = time.NewTimer(time.Hour)
-	r.nopeTimer.Stop()
+	r.windowTimer = time.NewTimer(time.Hour)
+	r.windowTimer.Stop()
 	r.idleTimer = time.NewTimer(time.Hour)
 	r.idleTimer.Stop()
 	go r.run()
@@ -234,11 +246,9 @@ func (r *Room) run() {
 			case cmdSummary:
 				c.reply <- r.summary()
 			}
-		case <-r.nopeTimer.C:
+		case <-r.windowTimer.C:
 			r.inWindow = false
-			if r.state != nil && r.state.Phase == game.PhaseNope {
-				r.applyAction(game.Action{Kind: game.ActNopeExpired})
-			}
+			r.fan(r.game.WindowExpired())
 			r.rearmTimers()
 			r.broadcast()
 		case <-r.idleTimer.C:
@@ -274,11 +284,7 @@ func (r *Room) handleJoin(c cmdJoin) {
 				if name != "" {
 					m.Name = name
 				}
-				if r.state != nil {
-					if p := r.state.Find(m.ID); p != nil {
-						p.Name = m.Name
-					}
-				}
+				r.game.Rename(m.ID, m.Name)
 				c.reply <- joinResult{PlayerID: m.ID, Token: m.Token}
 				r.rearmTimers()
 				r.broadcast()
@@ -287,11 +293,11 @@ func (r *Room) handleJoin(c cmdJoin) {
 		}
 	}
 
-	if r.state != nil && r.state.Phase != game.PhaseGameOver {
+	if r.game.Started() && !r.game.Over() {
 		c.reply <- joinResult{Err: ErrInProgress}
 		return
 	}
-	if len(r.members) >= r.capacity() {
+	if len(r.members) >= r.game.MaxPlayers() {
 		c.reply <- joinResult{Err: ErrRoomFull}
 		return
 	}
@@ -307,7 +313,7 @@ func (r *Room) handleJoin(c cmdJoin) {
 	}
 	r.members = append(r.members, m)
 	c.reply <- joinResult{PlayerID: m.ID, Token: m.Token}
-	r.appendLog(view.Entry{Kind: "joined", ActorID: m.ID})
+	r.appendLog(core.Entry{Kind: "joined", ActorID: m.ID})
 	r.broadcast()
 }
 
@@ -325,7 +331,7 @@ func (r *Room) handleLeave(c cmdLeave) {
 
 		// Before the game starts there is no seat worth preserving, so drop them
 		// entirely and let someone else take the slot.
-		if r.state == nil {
+		if !r.game.Started() {
 			r.members = append(r.members[:i], r.members[i+1:]...)
 			if m.Host && len(r.members) > 0 {
 				r.members[0].Host = true
@@ -358,17 +364,12 @@ func (r *Room) handleMsg(c cmdMsg) {
 		r.handleAvatar(m, c.msg.Avatar)
 		return
 	}
-	if r.state == nil {
-		r.sendErr(m, "the game hasn't started yet")
+	if !r.game.Started() {
+		r.sendErr(m, core.ErrNotStarted.Error())
 		return
 	}
 
-	a, ok := toAction(m.ID, c.msg)
-	if !ok {
-		r.sendErr(m, "unrecognised action")
-		return
-	}
-	if err := r.applyAction(a); err != nil {
+	if err := r.submit(m.ID, c.msg); err != nil {
 		r.sendErr(m, err.Error())
 		// Still resend state so a client that got out of sync snaps back.
 		r.sendTo(m)
@@ -383,37 +384,39 @@ func (r *Room) handleStart(m *member) {
 		r.sendErr(m, ErrNotHost.Error())
 		return
 	}
-	if r.state != nil && r.state.Phase != game.PhaseGameOver {
+	if r.game.Started() && !r.game.Over() {
 		r.sendErr(m, ErrInProgress.Error())
 		return
 	}
 	// Only players who are actually present get dealt in.
-	var seats []game.Seat
+	var seats []core.Seat
 	var present []*member
 	for _, mm := range r.members {
 		if mm.Connected {
-			seats = append(seats, game.Seat{ID: mm.ID, Name: mm.Name})
+			seats = append(seats, core.Seat{ID: mm.ID, Name: mm.Name})
 			present = append(present, mm)
 		}
 	}
-	s, err := game.NewGame(seats, r.Variant, r.rng)
+	//s, err := game.NewGame(seats, r.Variant, r.rng)
+	entries, err := r.game.Deal(seats)
 	if err != nil {
 		r.sendErr(m, err.Error())
 		return
 	}
-	r.members = present
-	r.state = s
+	// Cleared after the deal, not before: a refused deal must leave the finished
+	// game's play-by-play on screen, and the entries the deal itself produced —
+	// who starts, what was turned over — have to survive the clearing.
 	r.logbuf = nil
 	r.inWindow = false
-	r.appendLog(view.Entry{Kind: "started"})
-	r.appendLog(view.Entry{Kind: "turn", ActorID: s.CurrentID()})
+	r.members = present
+	r.fan(entries)
 	r.rearmTimers()
 	r.broadcast()
 }
 
 // handleAvatar records a player's portrait: one per table, lobby only.
 func (r *Room) handleAvatar(m *member, id string) {
-	if r.state != nil {
+	if r.game.Started() {
 		r.sendErr(m, "you can only pick a cat in the lobby")
 		return
 	}
@@ -447,39 +450,42 @@ func (r *Room) handleReturnToLobby(m *member) {
 		r.sendErr(m, ErrNotHost.Error())
 		return
 	}
-	if r.state == nil {
+	if !r.game.Started() {
 		return // already in the lobby; nothing to undo
 	}
-	if r.state.Phase != game.PhaseGameOver {
+	if !r.game.Over() {
 		r.sendErr(m, ErrInProgress.Error())
 		return
 	}
-	r.state = nil
+	r.game.Reset()
 	r.logbuf = nil
 	r.inWindow = false
-	r.rearmTimers() // both timers stop themselves once state is nil
+	r.rearmTimers() // both timers stop themselves once nothing is dealt
 	r.broadcast()
 }
 
-// applyAction runs one action through the engine and fans its events out. It is
-// the only caller of game.Apply.
-func (r *Room) applyAction(a game.Action) error {
-	events, err := game.Apply(r.state, a)
+// submit hands one player's message to the rules and fans out whatever came of
+// it. It is the only path from a socket into a game.
+func (r *Room) submit(playerID string, msg ClientMsg) error {
+	entries, err := r.game.Submit(playerID, msg)
 	if err != nil {
 		return err
 	}
-	for _, e := range events {
-		entry := view.Entry{
-			Kind: string(e.Kind), ActorID: e.ActorID, TargetID: e.TargetID,
-			Cards: e.Cards, Text: e.Text,
-		}
+	r.fan(entries)
+	return nil
+}
+
+// fan splits a game's entries into the shared log and the private deliveries.
+// An entry marked for one player never reaches the log every other client
+// replays, which is what keeps a drawn card or a revealed hand from leaking.
+func (r *Room) fan(entries []core.Entry) {
+	for _, e := range entries {
 		if e.OnlyFor != "" {
-			r.sendPrivate(e.OnlyFor, entry)
+			r.sendPrivate(e.OnlyFor, e)
 			continue
 		}
-		r.appendLog(entry)
+		r.appendLog(e)
 	}
-	return nil
 }
 
 // toAction maps a wire message onto an engine action. ActNopeExpired is
@@ -515,38 +521,34 @@ func toAction(playerID string, m ClientMsg) (game.Action, bool) {
 // rearmTimers reconciles both timers with the current phase. It runs after every
 // state change so the timers are always a pure function of the state.
 func (r *Room) rearmTimers() {
-	r.rearmNope()
+	r.rearmWindow()
 	r.rearmIdle()
 }
 
-func (r *Room) rearmNope() {
-	if r.state == nil || r.state.Phase != game.PhaseNope || r.state.Pending == nil {
+// rearmWindow reconciles the action-window timer with whatever the rules say is
+// open. The token is the game's way of saying "restart it": Exploding Kittens
+// bumps it on every Nope, so stacking one gives the table its time back.
+func (r *Room) rearmWindow() {
+	length, token, open := r.game.Window()
+	if !open {
 		r.inWindow = false
-		r.nopeTimer.Stop()
+		r.windowTimer.Stop()
 		return
 	}
-	// A newly played Nope refreshes the window so everyone can Yup it back.
-	if !r.inWindow || r.state.Pending.Nopes != r.lastNopes {
+	if !r.inWindow || token != r.lastToken {
 		r.inWindow = true
-		r.lastNopes = r.state.Pending.Nopes
-		r.nopeDeadline = time.Now().Add(nopeWindow)
-		r.nopeTimer.Stop()
-		r.nopeTimer.Reset(nopeWindow)
+		r.lastToken = token
+		r.windowLength = length
+		r.windowDeadline = time.Now().Add(length)
+		r.windowTimer.Stop()
+		r.windowTimer.Reset(length)
 	}
 }
 
 // waitingOn returns the member the table is currently blocked on, if any.
 func (r *Room) waitingOn() *member {
-	if r.state == nil {
-		return nil
-	}
-	switch r.state.Phase {
-	case game.PhaseTurn, game.PhaseDefuse:
-		return r.find(r.state.CurrentID())
-	case game.PhaseFavor:
-		return r.find(r.state.AwaitingGiftFrom())
-	case game.PhaseAlter:
-		return r.find(r.state.AlteringID())
+	if id := r.game.BlockedOn(); id != "" {
+		return r.find(id)
 	}
 	return nil
 }
@@ -572,66 +574,40 @@ func (r *Room) actForAbsentPlayer() {
 	if m == nil || m.Connected {
 		return
 	}
-	var a game.Action
-	switch r.state.Phase {
-	case game.PhaseTurn:
-		a = game.Action{Kind: game.ActDraw, PlayerID: m.ID}
-	case game.PhaseDefuse:
-		a = game.Action{Kind: game.ActPlaceKitten, PlayerID: m.ID, Index: r.rng.Intn(r.state.DeckSize() + 1)}
-	case game.PhaseFavor:
-		p := r.state.Find(m.ID)
-		if p == nil || len(p.Hand) == 0 {
-			return
+	entries, err := r.game.AutoMove(m.ID)
+	if err != nil {
+		if err != core.ErrNoMove {
+			log.Printf("room %s: auto-move for absent %s failed: %v", r.Code, m.ID, err)
 		}
-		a = game.Action{Kind: game.ActGiveCard, PlayerID: m.ID, CardIDs: []int{p.Hand[0].ID}}
-	case game.PhaseAlter:
-		// Least destructive is to put them back exactly as they were.
-		order := make([]int, len(r.state.AlterFaces()))
-		for i := range order {
-			order[i] = i
-		}
-		a = game.Action{Kind: game.ActAlterFuture, PlayerID: m.ID, Order: order}
-	default:
 		return
 	}
-	if err := r.applyAction(a); err != nil {
-		log.Printf("room %s: auto-move for absent %s failed: %v", r.Code, m.ID, err)
-		return
-	}
-	r.appendLog(view.Entry{Kind: "auto", ActorID: m.ID})
+	r.fan(entries)
+	r.appendLog(core.Entry{Kind: "auto", ActorID: m.ID})
 }
 
 // ---------------------------------------------------------------- broadcasting
 
-func (r *Room) memberships() []view.Membership {
-	out := make([]view.Membership, 0, len(r.members))
+func (r *Room) memberships() []core.Membership {
+	out := make([]core.Membership, 0, len(r.members))
 	for _, m := range r.members {
-		out = append(out, view.Membership{ID: m.ID, Name: m.Name, Avatar: m.Avatar, Connected: m.Connected, Host: m.Host})
+		out = append(out, core.Membership{ID: m.ID, Name: m.Name, Avatar: m.Avatar, Connected: m.Connected, Host: m.Host})
 	}
 	return out
 }
 
-func (r *Room) viewFor(id string) *view.View {
-	ms := r.memberships()
-	v := func() *view.View {
-		if r.state == nil {
-			return view.Lobby(r.Code, ms, id)
-		}
-		var cd view.Countdown
-		if r.inWindow {
-			cd = view.Countdown{
-				RemainingMs: max(0, time.Until(r.nopeDeadline).Milliseconds()),
-				TotalMs:     nopeWindow.Milliseconds(),
-			}
-		}
-		return view.For(r.Code, ms, r.state, id, cd, r.logbuf)
-	}()
-	// Visibility and which game this is belong to the room, not to the rules, so
-	// they are stamped on here rather than threaded through both view
-	// constructors.
-	v.Public = r.Public
-	v.Game = r.Game
-	return v
+// viewFor builds one client's payload. Its shape is the game's business — the
+// room only supplies the things the rules do not own: the room code, who is
+// connected, and how much of an open window is left.
+func (r *Room) viewFor(id string) any {
+	sh := core.Shell{
+		Code: r.Code, Public: r.Public, Game: r.Game,
+		Members: r.memberships(), ViewerID: id, Log: r.logbuf,
+	}
+	if r.inWindow {
+		sh.RemainingMs = max(0, time.Until(r.windowDeadline).Milliseconds())
+		sh.TotalMs = r.windowLength.Milliseconds()
+	}
+	return r.game.View(sh)
 }
 
 func (r *Room) broadcast() {
@@ -652,14 +628,14 @@ func (r *Room) sendTo(m *member) {
 	m.Conn.Send(b)
 }
 
-func (r *Room) sendPrivate(playerID string, e view.Entry) {
+func (r *Room) sendPrivate(playerID string, e core.Entry) {
 	m := r.find(playerID)
 	if m == nil || m.Conn == nil {
 		return
 	}
 	b, err := json.Marshal(struct {
 		Type  string     `json:"type"`
-		Event view.Entry `json:"event"`
+		Event core.Entry `json:"event"`
 	}{"private", e})
 	if err != nil {
 		return
@@ -680,7 +656,7 @@ func (r *Room) sendErr(m *member, msg string) {
 
 // appendLog stamps the entry with the next sequence number. It keeps counting
 // across rounds, so a client's high-water mark never points at a replayed event.
-func (r *Room) appendLog(e view.Entry) {
+func (r *Room) appendLog(e core.Entry) {
 	r.logSeq++
 	e.Seq = r.logSeq
 	r.logbuf = append(r.logbuf, e)
@@ -721,7 +697,7 @@ func (r *Room) summary() Summary {
 	s := Summary{
 		Code:     r.Code,
 		Game:     r.Game,
-		Capacity: r.capacity(),
+		Capacity: r.game.MaxPlayers(),
 		Public:   r.Public,
 		Players:  r.connectedCount(),
 	}
@@ -735,7 +711,7 @@ func (r *Room) summary() Summary {
 	}
 	// A room with nobody in it is a room the reaper has not got to yet; offering
 	// it would hand somebody an empty table with no host.
-	s.Joinable = r.state == nil && s.Players > 0 && s.Players < r.capacity()
+	s.Joinable = !r.game.Started() && s.Players > 0 && s.Players < r.game.MaxPlayers()
 	return s
 }
 

@@ -33,6 +33,10 @@ func New(mgr *room.Manager) http.Handler {
 	// worth caching hard — it is by far the heaviest thing we serve.
 	mux.Handle("GET /cards/", http.StripPrefix("/cards/",
 		immutable(http.FileServer(http.FS(static.CardArt())))))
+	// Per-game artwork: /media/uno/uno-background.jpg and whatever a later game
+	// brings with it.
+	mux.Handle("GET /media/", http.StripPrefix("/media/",
+		immutable(http.FileServer(http.FS(static.GameMedia())))))
 	mux.Handle("GET /avatars/", http.StripPrefix("/avatars/",
 		immutable(http.FileServer(http.FS(static.Avatars())))))
 	mux.Handle("GET /audio/", http.StripPrefix("/audio/",
