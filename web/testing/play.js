@@ -92,11 +92,29 @@ try {
   });
 
   await check("every client agrees who won", async () => {
+    // The loop above stops as soon as *one* client shows the result, so the
+    // others may still have the broadcast in flight. Wait for them rather than
+    // reading a snapshot that is a few milliseconds too early.
     for (const p of players) {
-      const lines = await p.logLines();
-      const win = lines.find((l) => /wins!/.test(l));
-      assert(win, `${p.name} never saw a winner in the log`);
+      await waitFor(
+        async () => (await p.logLines()).some((l) => /wins!/.test(l)),
+        { timeout: 5000, what: `${p.name} to see the winner` },
+      );
     }
+    // The log is written from each reader's point of view, so the winner's own
+    // client says "You wins" where everyone else names them. That is the right
+    // behaviour, and it means the agreement to check is: exactly one client sees
+    // itself win, and the rest name the same player.
+    const named = new Set();
+    let sawItself = 0;
+    for (const p of players) {
+      const line = (await p.logLines()).find((l) => /wins!/.test(l));
+      const who = line.replace(/[^A-Za-z ]/g, "").replace(/\s*wins\s*$/, "").trim();
+      if (who === "You") sawItself++;
+      else named.add(who);
+    }
+    assert(sawItself === 1, `${sawItself} clients think they won, want exactly 1`);
+    assert(named.size === 1, `the losers disagree on who won: ${[...named]}`);
   });
 
   await check("no modal ran off the screen", async () => {

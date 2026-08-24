@@ -31,6 +31,52 @@ try {
     assert(bg && bg !== "none", "the menu has no gradient background");
   });
 
+  await check("the page has a header bar naming the site", async () => {
+    const bar = alex.$(".topnav");
+    assert(await bar.isVisible(), "there is no header bar");
+    const brand = (await alex.$(".brand").textContent()).trim();
+    assert(/board games/i.test(brand), `the header says ${JSON.stringify(brand)}`);
+    // The mute control lives in the bar now rather than floating over a panel.
+    assert(await alex.$(".topnav .mute").isVisible(), "no mute button in the header");
+  });
+
+  await check("the header sits above the tiles, not over them", async () => {
+    const bar = await alex.$(".topnav").boundingBox();
+    const first = await alex.$(".game-tile").first().boundingBox();
+    assert(bar && first, "could not measure the header and the tiles");
+    assert(
+      bar.y + bar.height <= first.y + 1,
+      `the header overlaps the first tile (bar ends ${Math.round(bar.y + bar.height)}, tile starts ${Math.round(first.y)})`,
+    );
+  });
+
+  await check("every tile shows box art or a deliberate stand-in", async () => {
+    // A game with no cover must look designed, not broken — so the well is
+    // either a loaded image or explicitly marked as having no art.
+    const covers = await alex.page.$$eval(".game-cover", (els) =>
+      els.map((el) => {
+        const img = el.querySelector("img");
+        return {
+          noArt: el.classList.contains("no-art"),
+          loaded: Boolean(img) && img.naturalWidth > 0,
+          hasImg: Boolean(img),
+        };
+      }),
+    );
+    assert(covers.length > 0, "no covers rendered at all");
+    for (const c of covers) {
+      assert(
+        c.noArt || c.loaded,
+        `a cover has an image that did not load (img present: ${c.hasImg})`,
+      );
+    }
+  });
+
+  await check("the playable tile invites you to play", async () => {
+    const cta = (await alex.$('.game-tile:not(.locked) .game-cta').textContent()).trim();
+    assert(/play/i.test(cta), `the call to action reads ${JSON.stringify(cta)}`);
+  });
+
   await check("every catalogued game gets a tile", async () => {
     const served = await listGames();
     const tiles = await alex.games();

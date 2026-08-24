@@ -55,6 +55,7 @@
 .rules-panel,
 .toast,
 .nope-bar,
+.game-tile,
 .card {
   --bg-soft: #f7f2f3;          /* crimson 5% over paper */
   --panel: var(--paper);
@@ -111,7 +112,7 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 
 /* The gradient gets the two screens with no body text of their own — every
    readable thing on them lives inside the paper panel. */
-#menu, #home, #lobby, #browser { display: grid; place-items: center; padding: 24px; background: var(--grad); }
+#home, #lobby, #browser { display: grid; place-items: center; padding: 24px; background: var(--grad); }
 
 .panel {
   position: relative;   /* anchors .sound-corner */
@@ -176,36 +177,110 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 .browser-title { font-size: 26px; }
 
-/* ───────────────────────────── game menu ───────────────────────────── */
+/* ───────────────────────────── game menu ─────────────────────────────
+   The front page is a shelf, not a form: a bar across the top for the site, and
+   the games as box-art tiles filling the width below it. That is why it does not
+   use .panel like the screens after it — a 420px column would show one game at a
+   time and get narrower-feeling with every game added. */
 
-.game-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.menu {
+  display: grid; grid-template-rows: auto 1fr;
+  background: var(--grad);
+}
+
+/* Solid crimson rather than letting the gradient through: paper text over the
+   gradient's gold end is 1.6:1, and over crimson it is 10.5:1. */
+.topnav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 20px;
+  background: var(--crimson); border-bottom: 1px solid var(--line);
+}
+.brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--paper); }
+
+.menu-body {
+  width: min(1100px, 100%); margin: 0 auto;
+  padding: 28px 20px 40px; display: grid; gap: 18px; align-content: start;
+}
+/* Centred to sit with the grid below it, which centres because there are only a
+   few games. If the shelf ever fills a row, both should go back to flush left. */
+.menu-head { display: grid; gap: 4px; text-align: center; }
+/* balance keeps the subtitle from dropping a single word onto its own line on a
+   phone; browsers without it just wrap normally. */
+.menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--paper); text-wrap: balance; }
+.menu-sub { margin: 0; font-size: 14px; color: rgba(253,254,255,.82); text-wrap: balance; }
+.menu-status { margin: 0; font-size: 14px; color: var(--paper); font-weight: 600; }
+
+/* Tracks are capped rather than left to stretch, and the grid is centred: with
+   three games a 1fr grid stretches them across the whole width and leaves a bald
+   band to the right. Capped tracks look the same at three games as at thirty. */
+.game-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 16px; justify-content: center;
+  /* auto-fit, not auto-fill: auto-fill keeps the empty tracks it made room for,
+     which pushes three centred tiles off to one side. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 230px));
+}
 
 .game-tile {
-  width: 100%; display: flex; align-items: center; gap: 12px;
-  background: var(--bg-soft); border: 1px solid var(--line);
-  border-radius: 12px; padding: 14px 14px; text-align: left;
-  font: inherit; color: inherit; cursor: pointer;
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px; text-align: left;
+  font: inherit; color: var(--ink); cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0,0,0,.22);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
 }
-.game-tile:hover { border-color: var(--gold); }
-.game-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.game-tile:hover:not(.locked) {
+  transform: translateY(-3px);
+  border-color: var(--gold);
+  box-shadow: 0 12px 24px rgba(0,0,0,.3);
+}
+.game-tile:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
 
-.game-emoji { font-size: 28px; line-height: 1; }
-.game-text { flex: 1; display: grid; gap: 3px; min-width: 0; }
-.game-text b { font-size: 17px; }
-.game-text small { font-size: 12px; color: var(--muted); line-height: 1.35; }
+/* The box art sits in a 3:4 well, the shape a card game's box photographs as.
+   Cover-fit so a wrong-shaped scan crops rather than distorting. */
+.game-cover {
+  display: grid; place-items: center; overflow: hidden;
+  aspect-ratio: 3 / 4; border-radius: 10px;
+  background: var(--bg-soft); border: 1px solid var(--line);
+}
+.game-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A game with no box art gets the house gradient rather than an empty well, so
+   the tile reads as designed instead of as a picture that failed to load. */
+.game-cover.no-art { background: var(--grad); border-color: transparent; }
+.game-emoji { font-size: clamp(40px, 10vw, 60px); line-height: 1; }
 
-/* The one tile you can press is the one with a coloured edge and a chevron. */
-.game-tile:not(.locked) { border-left: 3px solid var(--gold); }
-.game-go { flex: none; font-size: 22px; color: var(--muted); line-height: 1; }
+.game-text { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.game-name { font-size: 15px; line-height: 1.2; }
+.game-tag { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.game-players { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+/* Looks like the button it effectively is, without being a second control
+   nested inside the tile's own. */
+.game-cta {
+  align-self: stretch; text-align: center;
+  background: var(--gold); color: var(--crimson);
+  font-size: 13px; font-weight: 700;
+  border-radius: 9px; padding: 8px 10px;
+}
 
 /* Locked tiles stay legible rather than being greyed into unreadability: the
    point is to advertise what is coming, not to hide it. */
-.game-tile.locked { cursor: default; opacity: .7; }
-.game-tile.locked:hover { border-color: var(--line); }
+.game-tile.locked { cursor: default; }
+.game-tile.locked .game-cover,
+.game-tile.locked .game-name { opacity: .72; }
 .soon {
-  flex: none; font-size: 10px; font-weight: 800; letter-spacing: .1em;
+  align-self: stretch; text-align: center;
+  font-size: 11px; font-weight: 800; letter-spacing: .1em;
   text-transform: uppercase; color: var(--muted);
-  border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px;
+  border: 1px dashed var(--line); border-radius: 9px; padding: 8px 10px;
+}
+
+@media (max-width: 420px) {
+  .menu-body { padding: 20px 14px 32px; gap: 14px; }
+  .menu-title { font-size: 23px; }
+  /* Two up on a phone, stretching to the edges — there is no width to spare. */
+  .game-list { gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 }
 
 .room-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
