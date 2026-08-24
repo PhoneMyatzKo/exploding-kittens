@@ -6,7 +6,10 @@ import { requireServer } from "./lib.js";
 
 await requireServer();
 
-const scripts = ["smoke.js", "menu.js", "selection.js", "logtest.js", "publiclobby.js", "play.js"];
+const scripts = [
+  "smoke.js", "menu.js", "selection.js", "logtest.js",
+  "publiclobby.js", "modals.js", "play.js",
+];
 const failures = [];
 
 for (const script of scripts) {

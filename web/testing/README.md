@@ -46,6 +46,7 @@ Screenshots land in `shots/` (gitignored).
 | `selection.js` | One non-cat at a time, cats stack only with matching cats, a refused tap explains itself, the hand can be covered; lobby mute and leaving the room properly |
 | `logtest.js` | The log behaves like a chat box: always on screen, does not overlap the hand, does not yank a scrolled reader, follows when pinned, collapses and remembers it |
 | `publiclobby.js` | Only joinable rooms are listed — private, dealt and full ones drop out; joining from the list; visibility remembered |
+| `modals.js` | The Favor picker fits on screen and every card in it can be reached, on a laptop, a small window and two phone sizes — plus a hand twice the size a deal can produce |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
@@ -64,7 +65,13 @@ skim past the skip line. Both are enforced by the engine and covered in
 
 ## Writing more
 
-Two traps that have caught this harness before:
+**Desktop is not the easy case.** `--card-w` clamps at its *maximum* on a wide
+screen, so a list of cards stacks two-per-row into a very tall box — the Favor
+picker running off the bottom of the screen was reported on a PC, and the phone
+viewports alone would not have found it. Anything sized in `vw` needs checking at
+both ends of the range, not just the small one.
+
+Three traps that have caught this harness before:
 
 - **Elements vanish between the check and the click.** In a multi-tab game
   another player's move can legitimately close the window you were about to
@@ -72,6 +79,10 @@ Two traps that have caught this harness before:
   `false`.
 - **An empty `<ul>` has zero size**, so Playwright treats it as hidden. Wait on
   a sibling that always has text — `#browser-status`, not `#browser-list`.
+- **`offsetTop` is relative to the nearest positioned ancestor**, not to the
+  scroll box an element sits in. Arithmetic on it to decide "can this be
+  scrolled to" quietly measures nothing. Scroll to the element and ask the
+  browser where it ended up instead.
 
 The client keeps its state in a module scope with nothing on `window`. That is
 correct, and the tests read the DOM instead. Resist the urge to export state for

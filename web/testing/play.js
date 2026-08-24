@@ -25,6 +25,14 @@ const SINGLES = ["skip", "attack", "shuffle", "future", "favor"];
 const hit = new Set();
 const MAX_STEPS = 400;
 
+// modals.js covers the Favor picker in detail. This catches the same fault in
+// any other modal the game happens to open — the demand grid especially, which
+// is twelve tiles and only shows up when somebody is dealt three matching cats.
+// Declared up here rather than beside its helper: the checks below run before
+// the bottom of the file is reached, and a `const` down there is not yet
+// initialised when they do.
+const overflowed = [];
+
 const browser = await launch();
 const phone = process.env.MOBILE === "1";
 const players = [
@@ -91,6 +99,13 @@ try {
     }
   });
 
+  await check("no modal ran off the screen", async () => {
+    assert(
+      overflowed.length === 0,
+      `modals taller than the window: ${overflowed.join("; ")}`,
+    );
+  });
+
   await check("no opponent's card was ever rendered", async () => {
     // Belt and braces next to the Go leak test: if the client ever drew a face
     // for another seat, the markup would show it.
@@ -119,6 +134,7 @@ report("full game");
 async function answerModal(p) {
   if (!(await visible(p.$("#modal")))) return "";
 
+  await noteIfModalOverflows(p);
   const title = (await p.$("#modal-title").textContent()) || "";
 
   if (/survived/i.test(title)) {
@@ -157,6 +173,19 @@ async function answerModal(p) {
     await safeClick(p.$("#modal-alt"), 800);
   }
   return "";
+}
+
+async function noteIfModalOverflows(p) {
+  const bad = await p.page.evaluate(() => {
+    const box = document.querySelector(".modal-box");
+    if (!box) return null;
+    const r = box.getBoundingClientRect();
+    const vh = window.innerHeight;
+    if (r.top >= -1 && r.bottom <= vh + 1) return null;
+    const kind = document.getElementById("modal").dataset.kind || "?";
+    return `${kind}: ${Math.round(r.height)}px box in a ${vh}px viewport`;
+  });
+  if (bad && !overflowed.includes(bad)) overflowed.push(bad);
 }
 
 async function winnerFromLog(p) {

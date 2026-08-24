@@ -41,10 +41,20 @@
   would share: the transport, the room loop, the portraits, the audio. The card
   art is served through a rooted FS, so the `/cards/…` URLs did not change.
 
-- ~~Browser tests back in the repo~~ — `web/testing/`, six scripts driving real
+- ~~Browser tests back in the repo~~ — `web/testing/`, seven scripts driving real
   Chromium. They had been living in a scratch directory and were lost between
   sessions, which meant every UI change was unverifiable. Not part of `go test`:
   they need a running server.
+
+- ~~The Favor picker ran off the bottom of the screen~~ — with a hand of eleven
+  you could see six, and nothing scrolled, so the rest were simply unpickable.
+  The box is now capped at the viewport with the card list as the only scrolling
+  part, so the title and buttons stay put; the cards in it are drawn smaller and
+  the box wider, which fits a normal hand on one screen without scrolling at all;
+  and an overflowing list fades at its bottom edge, since these browsers paint no
+  standing scrollbar to say there is more. Worst on **desktop**, where `--card-w`
+  clamps at its maximum and only two cards fit per row — `web/testing/modals.js`
+  now covers a laptop and a small window as well as two phone sizes.
 
 ## Ideas not started
 

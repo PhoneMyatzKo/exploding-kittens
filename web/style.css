@@ -676,15 +676,56 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .modal {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(0,0,0,.6); backdrop-filter: blur(3px);
-  display: grid; place-items: center; padding: 20px;
+  display: grid; padding: 20px;
+  /* safe centring, plus a scrollable overlay, so that a box too tall even for
+     its own cap is reachable rather than clipped off the top. */
+  justify-items: center; align-items: safe center;
+  overflow: auto;
 }
 .modal-box {
   width: min(480px, 100%); background: var(--panel);
   border: 1px solid var(--line); border-radius: 18px;
-  padding: 24px; display: grid; gap: 14px; text-align: center;
+  padding: 24px; text-align: center;
+  /* A column rather than a grid so one child can be the part that scrolls.
+     Capped at the overlay's content box: a picker showing a big hand used to
+     run off the bottom of the screen, taking the last cards and the buttons
+     with it. */
+  display: flex; flex-direction: column; gap: 14px;
+  /* Against the viewport less the overlay's padding, not 100% — a percentage
+     max-height does not resolve against a centred grid area, so it silently
+     did nothing here. dvh so a phone's collapsing address bar is accounted for. */
+  max-height: calc(100dvh - 40px);
 }
 .modal-box h2 { margin: 0; font-size: 22px; }
-.modal-cards { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* The card list is the only part that scrolls, so the title stays put and the
+   buttons underneath stay reachable however many cards there are. min-height:0
+   is what lets a flex child shrink below its content and scroll at all. */
+.modal-cards {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  /* A visible track, not an overlay scrollbar that only appears once you have
+     already guessed you can scroll. The first report of this said "there is no
+     scroll wheel" — the absence of the bar was the whole problem. */
+  scrollbar-width: thin; scrollbar-color: var(--muted) transparent;
+}
+/* Set by markScrollable() when there is more below. Fading the bottom edge says
+   "keep going" in a way a half-visible row does not. */
+.modal-cards.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent);
+  /* Room for the cards' drop shadows, which the scroll box would otherwise
+     shear off at the edges. */
+  padding: 4px;
+}
+/* Cards you are picking from, rather than holding, are only there to be told
+   apart — so they run smaller and three fit across a phone instead of two.
+   That alone gets a normal hand onto one screen. */
+.modal[data-kind="give"] .modal-cards { --card-w: clamp(84px, 23vw, 118px); }
+/* The picker is the one modal whose contents grow without limit, so on a screen
+   with width to spare it takes some: five cards a row instead of three turns a
+   scrolling list back into a glance. min() keeps a phone at full width. */
+.modal[data-kind="give"] .modal-box { width: min(680px, 100%); }
 .modal-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .modal-actions .btn { flex: 1 1 auto; }
 .modal-actions .btn[hidden] { display: none; }
