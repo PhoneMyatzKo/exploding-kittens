@@ -6,7 +6,10 @@ import { requireServer } from "./lib.js";
 
 await requireServer();
 
-const scripts = ["smoke.js", "menu.js", "selection.js", "logtest.js", "publiclobby.js", "play.js", "uno.js"];
+const scripts = [
+  "smoke.js", "menu.js", "selection.js", "logtest.js",
+  "publiclobby.js", "modals.js", "rules.js", "imploding.js", "play.js", "uno.js",
+];
 const failures = [];
 
 for (const script of scripts) {
@@ -15,18 +18,26 @@ for (const script of scripts) {
   if (code !== 0) failures.push(script);
 }
 
+// The full-game driver again on the expansion deck. Same script, other deck:
+// the new cards only ever come up in a game that is dealt with them.
+console.log(`\n─── play.js (imploding) ${"─".repeat(18)}`);
+if ((await run("play.js", { GAME: "kittens-imploding" })) !== 0) {
+  failures.push("play.js (imploding)");
+}
+
 console.log("\n════════════════════════════════════════════");
 if (failures.length) {
   console.log(`FAILED: ${failures.join(", ")}`);
   process.exit(1);
 }
-console.log(`all ${scripts.length} scripts passed`);
+console.log(`all ${scripts.length + 1} scripts passed`);
 
-function run(script) {
+function run(script, env = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [script], {
       stdio: "inherit",
       cwd: import.meta.dirname,
+      env: { ...process.env, ...env },
     });
     child.on("exit", (code) => resolve(code ?? 1));
   });

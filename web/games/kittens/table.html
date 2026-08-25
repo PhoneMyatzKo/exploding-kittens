@@ -61,10 +61,23 @@
 <!-- ───────────────────────── rules ───────────────────────── -->
 <aside id="rules-panel" class="rules-panel" hidden>
   <div class="rules-head">
-    <strong>How to play</strong>
+    <strong class="rules-title">How to play</strong>
+    <!-- Two buttons acting as radios, same pattern as the room visibility
+         toggle. The choice is remembered, because a table that reads Burmese
+         reads it every round. -->
+    <div class="lang-toggle" role="radiogroup" aria-label="Language">
+      <button id="lang-en" class="lang on" role="radio" aria-checked="true" type="button">EN</button>
+      <button id="lang-my" class="lang" role="radio" aria-checked="false" type="button" lang="my">မြန်မာ</button>
+    </div>
     <button id="rules-close" class="btn ghost small">Close</button>
   </div>
+
   <div class="rules-body">
+
+  <!-- ─────────────────────────── English ─────────────────────────── -->
+  <!-- Each <dt> carries the card's slug. paintRulesArt() swaps the emoji for
+       the real scanned card, and leaves the emoji if there is no art. -->
+  <section class="rules-lang" data-lang="en">
     <p><b>Be the last cat standing.</b> Draw an Exploding Kitten without a Defuse
       in hand and you are out of the game.</p>
 
@@ -79,38 +92,71 @@
 
     <h3>The cards</h3>
     <dl class="rules-cards">
-      <dt>💥 Exploding Kitten</dt>
+      <dt data-slug="exploding">💥 Exploding Kitten</dt>
       <dd>Drawn, never played. Defuse it or you are out, and your hand goes to
         the discard pile with you.</dd>
-      <dt>✂️ Defuse</dt>
+      <dt data-slug="defuse">✂️ Defuse</dt>
       <dd>Used the instant you draw a Kitten, automatically. You then slide that
         Kitten back into the deck wherever you like — top, bottom, anywhere —
         and nobody sees where it went.</dd>
-      <dt>⏭️ Skip</dt>
+      <dt data-slug="skip">⏭️ Skip</dt>
       <dd>End your turn immediately without drawing.</dd>
-      <dt>⚔️ Attack</dt>
+      <dt data-slug="attack">⚔️ Attack</dt>
       <dd>End your turn without drawing, and the next player takes two turns.
         Attack them back and the turns keep stacking.</dd>
-      <dt>🔀 Shuffle</dt>
+      <dt data-slug="shuffle">🔀 Shuffle</dt>
       <dd>Shuffle the deck. Useful right after somebody hides a Kitten.</dd>
-      <dt>🔮 See the Future</dt>
+      <dt data-slug="future">🔮 See the Future</dt>
       <dd>Look at the top three cards, privately, and put them back in the same
         order.</dd>
-      <dt>🙏 Favor</dt>
+      <dt data-slug="favor">🙏 Favor</dt>
       <dd>Pick a player; they choose one card from their hand and give it to
         you.</dd>
-      <dt>🌮 Two matching Cat Cards</dt>
+      <dt data-slug="cat-taco">🌮 Two matching Cat Cards</dt>
       <dd>Cat cards do nothing on their own. Play a matching pair to steal one
         random card from a player of your choice.</dd>
-      <dt>🌮🌮🌮 Three matching Cat Cards</dt>
+      <dt data-slug="cat-melon">🍉 Three matching Cat Cards</dt>
       <dd>Name the card you want and take it from a player of your choice. The
         whole table hears what you asked for. If they don't have one you get
         nothing, and the three cats are gone.</dd>
-      <dt>🚫 Nope</dt>
+      <dt data-slug="nope">🚫 Nope</dt>
       <dd>Cancels the card somebody just played, from anyone's hand, at any time
         — including out of turn. A Nope on a Nope un-cancels it. Nope cannot
         stop a draw or an explosion.</dd>
     </dl>
+
+    <!-- Shown only for the expansion; toggled by applyGameChrome(). -->
+    <div class="rules-expansion" hidden>
+      <h3>Imploding Kittens</h3>
+      <p>Twenty extra cards shuffled in, and room for a sixth player. One of the
+        kittens in the deck is now the <b>Imploding Kitten</b> instead of an
+        Exploding one.</p>
+      <dl class="rules-cards">
+        <dt data-slug="imploding">🌀 Imploding Kitten</dt>
+        <dd>The first person to draw it puts it back <b>face up</b>, anywhere they
+          like, and their turn ends — nobody is hurt and no Defuse is spent.
+          Whoever draws it after that is <b>out</b>, and a Defuse will not save
+          them. There is only one, and it stays in the deck until it takes
+          somebody.</dd>
+        <dt data-slug="reverse">🔄 Reverse</dt>
+        <dd>Turn the order of play around, then end your turn without drawing.
+          Under Attack it burns one turn, like Skip.</dd>
+        <dt data-slug="bottom">⬇️ Draw From the Bottom</dt>
+        <dd>End your turn by drawing the <b>bottom</b> card instead of the top
+          one. Just as risky — the kitten might be down there.</dd>
+        <dt data-slug="feral-cat">🐈 Feral Cat</dt>
+        <dd>A wildcard cat. It counts as any of the five cats, so it completes a
+          pair or a trio with whatever you already hold — and two Feral Cats
+          work together too.</dd>
+        <dt data-slug="alter">🃏 Alter the Future</dt>
+        <dd>Look at the top three cards and put them back <b>in any order you
+          like</b>. Only you see what they are.</dd>
+        <dt data-slug="targeted-attack">🎯 Targeted Attack</dt>
+        <dd>End your turn without drawing and force a player <b>of your
+          choice</b> to take two turns — not just whoever is next. Stacks like
+          Attack.</dd>
+      </dl>
+    </div>
 
     <h3>The Nope window</h3>
     <p>Every card played sits on the table for twenty seconds before it takes
@@ -121,6 +167,107 @@
     <p>Under the draw pile is the chance that the next card off the top is a
       Kitten. It climbs as the deck thins, and drops each time a player is
       eliminated and their Kitten leaves the game with them.</p>
+  </section>
+
+  <!-- ─────────────────────────── မြန်မာ ─────────────────────────── -->
+  <!-- Card names are kept in English on purpose: that is what people say at the
+       table, and it matches the words printed on the cards on screen. -->
+  <section class="rules-lang" data-lang="my" lang="my" hidden>
+    <p><b>နောက်ဆုံးအထိ ရှင်သန်နေသူ အနိုင်ရသည်။</b> လက်ထဲတွင် Defuse ကတ် မရှိဘဲ
+      Exploding Kitten ကတ်ကို ဆွဲမိပါက ပွဲထွက်ရမည်။</p>
+
+    <h3>ကတ်ခွဲခြင်း</h3>
+    <p>ကစားသမားတိုင်း ကတ် ၈ ကတ်ဖြင့် စတင်သည်။ ထိုအထဲမှ တစ်ကတ်သည် Defuse
+      ဖြစ်သည်။ ကတ်အထပ်တွင် ကစားသမား အရေအတွက်ထက် တစ်ကောင် နည်းသော Exploding
+      Kitten ကို ထည့်ထားသည် — ဒါကြောင့် အမြဲတမ်း တစ်ဦး ကျန်ရစ်ပြီး သရေ
+      မဖြစ်နိုင်ပါ။</p>
+
+    <h3>သင့်အလှည့်</h3>
+    <p>ကတ်များကို အလိုရှိသလောက်၊ အလိုရှိသည့် အစီအစဉ်ဖြင့် ချနိုင်သည်။ ပြီးလျှင်
+      <b>ကတ်ဆွဲ</b>ရမည်။ ကတ်ဆွဲခြင်းသည် သင့်အလှည့်ကို ကုန်ဆုံးစေသည်၊ ထို့အပြင်
+      အလှည့်တစ်ခုလုံးတွင် အန္တရာယ်ရှိသည့် တစ်ခုတည်းသော အလုပ်လည်း ဖြစ်သည်။</p>
+
+    <h3>ကတ်များ</h3>
+    <dl class="rules-cards">
+      <dt data-slug="exploding">💥 Exploding Kitten</dt>
+      <dd>ချရန် မဟုတ်၊ ဆွဲမိရန်သာ ဖြစ်သည်။ Defuse ဖြင့် မဖြေနိုင်ပါက ပွဲထွက်ရမည်၊
+        လက်ထဲရှိ ကတ်များအားလုံးလည်း စွန့်ပစ်ကတ်ထပ်သို့ လိုက်သွားမည်။</dd>
+      <dt data-slug="defuse">✂️ Defuse</dt>
+      <dd>Kitten ဆွဲမိသည့် ချက်ချင်း အလိုအလျောက် အသုံးပြုသည်။ ထို့နောက် Kitten ကို
+        ကတ်အထပ်အတွင်း သင်အလိုရှိသည့် နေရာ — အပေါ်၊ အောက်၊ အလယ် — တွင် ပြန်ထည့်
+        နိုင်သည်။ ဘယ်နေရာ ထည့်လိုက်သည်ကို တစ်ဦးမှ မမြင်ပါ။</dd>
+      <dt data-slug="skip">⏭️ Skip</dt>
+      <dd>ကတ်မဆွဲဘဲ သင့်အလှည့်ကို ချက်ချင်း ကုန်ဆုံးစေသည်။</dd>
+      <dt data-slug="attack">⚔️ Attack</dt>
+      <dd>ကတ်မဆွဲဘဲ အလှည့်ကို ကုန်ဆုံးစေပြီး နောက်ကစားသမားသည် အလှည့် ၂ ခါ
+        ယူရမည်။ သူတစ်ဖန် Attack ပြန်ချပါက အလှည့်များ ဆက်တိုက် ပေါင်းသွားမည်။</dd>
+      <dt data-slug="shuffle">🔀 Shuffle</dt>
+      <dd>ကတ်အထပ်ကို ရှပ်သည်။ တစ်ဦးဦးက Kitten ကို ဖျောက်ထားပြီးချိန်တွင်
+        အထူးအသုံးဝင်သည်။</dd>
+      <dt data-slug="future">🔮 See the Future</dt>
+      <dd>အပေါ်ဆုံး ကတ် ၃ ကတ်ကို သင်တစ်ဦးတည်း ကြည့်ပြီး အစီအစဉ် အတိုင်း
+        ပြန်ထားသည်။</dd>
+      <dt data-slug="favor">🙏 Favor</dt>
+      <dd>ကစားသမား တစ်ဦးကို ရွေးပါ။ သူ့လက်ထဲမှ ကတ် တစ်ကတ်ကို <b>သူကိုယ်တိုင်
+        ရွေးပြီး</b> သင့်ကို ပေးရမည်။</dd>
+      <dt data-slug="cat-taco">🌮 တူညီသော Cat ကတ် ၂ ကတ်</dt>
+      <dd>Cat ကတ်များသည် တစ်ကတ်တည်း ချလျှင် အကျိုးမရှိပါ။ တူညီသော ၂ ကတ် တွဲချပါက
+        သင်ရွေးသည့် ကစားသမား၏ လက်ထဲမှ ကတ် တစ်ကတ်ကို <b>ကံစမ်း</b> ယူနိုင်သည်။</dd>
+      <dt data-slug="cat-melon">🍉 တူညီသော Cat ကတ် ၃ ကတ်</dt>
+      <dd>သင်လိုချင်သည့် ကတ်အမည်ကို ခေါ်ပြီး ရွေးထားသည့် ကစားသမားထံမှ ယူသည်။
+        သင်တောင်းလိုက်သည်ကို စားပွဲတစ်ဝိုက်လုံး ကြားသည်။ သူ့လက်ထဲ ထိုကတ်
+        မရှိပါက ဘာမှ မရဘဲ Cat ကတ် ၃ ကတ် အလဟဿ ဖြစ်သွားမည်။</dd>
+      <dt data-slug="nope">🚫 Nope</dt>
+      <dd>တစ်ဦးဦး ခုတင် ချလိုက်သည့် ကတ်ကို ပယ်ဖျက်သည်။ မည်သူ့လက်ထဲမှမဆို၊
+        မည်သည့်အချိန်မဆို — သင့်အလှည့် မဟုတ်လည်း ချနိုင်သည်။ Nope အပေါ် Nope
+        ထပ်ချပါက မူလ ကတ် ပြန်အလုပ်လုပ်သည်။ ကတ်ဆွဲခြင်းနှင့် ပေါက်ကွဲခြင်းကို
+        Nope ဖြင့် တားဆီး၍ မရပါ။</dd>
+    </dl>
+
+    <div class="rules-expansion" hidden>
+      <h3>Imploding Kittens (တိုးချဲ့ကတ်များ)</h3>
+      <p>ကတ် ၂၀ ကတ် ထပ်ထည့်ထားပြီး ကစားသမား ၆ ဦးအထိ ကစားနိုင်သည်။ ကတ်အထပ်ထဲရှိ
+        Kitten တစ်ကောင်သည် Exploding Kitten အစား <b>Imploding Kitten</b>
+        ဖြစ်လာသည်။</p>
+      <dl class="rules-cards">
+        <dt data-slug="imploding">🌀 Imploding Kitten</dt>
+        <dd>ပထမဆုံး ဆွဲမိသူသည် ကတ်ကို <b>မှောက်မထား၊ လှန်ထား</b>ပြီး အလိုရှိသည့်
+          နေရာတွင် ပြန်ထည့်ရမည်။ သူ့အလှည့် ကုန်ဆုံးသည် — ဒါပေမယ့် တစ်ဦးမှ
+          မထိခိုက်ဘဲ Defuse လည်း မကုန်ပါ။ ထို့နောက် ဆွဲမိသူသည် <b>ပွဲထွက်</b>
+          ရမည်၊ Defuse ဖြင့်လည်း ကယ်တင်၍ မရပါ။ တစ်ကတ်သာ ရှိပြီး တစ်ဦးဦးကို
+          ဖမ်းမီ ကတ်အထပ်ထဲမှ မထွက်ပါ။</dd>
+        <dt data-slug="reverse">🔄 Reverse</dt>
+        <dd>ကစားခြင်း အလှည့်ကို ပြောင်းပြန် လှည့်ပြီး ကတ်မဆွဲဘဲ အလှည့်
+          ကုန်ဆုံးစေသည်။ Attack ခံရစဉ် Skip ကဲ့သို့ အလှည့် တစ်ခါစာ ကုန်သည်။</dd>
+        <dt data-slug="bottom">⬇️ Draw From the Bottom</dt>
+        <dd>အပေါ်ဆုံး ကတ်အစား <b>အောက်ဆုံး</b> ကတ်ကို ဆွဲပြီး အလှည့်
+          ကုန်ဆုံးစေသည်။ အန္တရာယ် အတူတူပင် — Kitten သည် အောက်ဘက်တွင်
+          ရှိနေနိုင်သည်။</dd>
+        <dt data-slug="feral-cat">🐈 Feral Cat</dt>
+        <dd>ဘယ် Cat ကတ်နှင့်မဆို တွဲနိုင်သည့် ကတ်ဖြစ်သည်။ Cat ၅ မျိုးအထဲ
+          မည်သည့်တစ်မျိုးအဖြစ် တွဲနိုင်သည်၊ ဒါကြောင့် သင့်လက်ထဲရှိ ကတ်နှင့်
+          ၂ ကတ် (သို့) ၃ ကတ် ပြည့်စေသည်။ Feral Cat ၂ ကတ်လည်း အတူ တွဲနိုင်သည်။</dd>
+        <dt data-slug="alter">🃏 Alter the Future</dt>
+        <dd>အပေါ်ဆုံး ကတ် ၃ ကတ်ကို ကြည့်ပြီး <b>သင်အလိုရှိသည့် အစီအစဉ်</b>ဖြင့်
+          ပြန်ထားသည်။ ဘာကတ်များဆိုတာ သင်တစ်ဦးတည်းသာ မြင်သည်။</dd>
+        <dt data-slug="targeted-attack">🎯 Targeted Attack</dt>
+        <dd>ကတ်မဆွဲဘဲ အလှည့် ကုန်ဆုံးစေပြီး <b>သင်ရွေးသည့်</b> ကစားသမားကို
+          အလှည့် ၂ ခါ ယူခိုင်းသည် — နောက်လူ ဖြစ်ရန် မလိုပါ။ Attack ကဲ့သို့
+          ပေါင်းသွားသည်။</dd>
+      </dl>
+    </div>
+
+    <h3>Nope အခွင့်အလမ်း</h3>
+    <p>ချလိုက်သည့် ကတ်တိုင်းသည် အကျိုးသက်ရောက်မီ စက္ကန့် ၂၀ ခန့် စားပွဲပေါ်တွင်
+      ရှိနေသည်။ အောက်ဘက်ရှိ ခရမ်းရောင် တန်းသည် Nope ချရန် သင့်အခွင့်အလမ်း
+      ဖြစ်သည်။ တစ်ဦးဦး Nope ထပ်ချတိုင်း အချိန် ပြန်စသည်။</p>
+
+    <h3>ကတ်အထပ်ကို ဖတ်ခြင်း</h3>
+    <p>ကတ်အထပ် အောက်တွင် နောက်တစ်ကတ် Kitten ဖြစ်နိုင်ခြေ ရာခိုင်နှုန်းကို
+      ပြထားသည်။ ကတ်အထပ် နည်းလာသည်နှင့်အမှု တက်လာပြီး၊ ကစားသမား တစ်ဦး ပွဲထွက်၍
+      သူ့ Kitten ပါသွားတိုင်း ကျဆင်းသည်။</p>
+  </section>
+
   </div>
 </aside>
 

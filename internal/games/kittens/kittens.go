@@ -25,20 +25,28 @@ const NopeWindow = 20 * time.Second
 
 // Game is one Exploding Kittens table.
 type Game struct {
-	state *game.State
-	rng   *rand.Rand
+	state   *game.State
+	rng     *rand.Rand
+	variant game.Variant
 }
 
 // New returns a table with nothing dealt yet.
-func New(rng *rand.Rand) core.Game {
+//
+// The variant is fixed when the room is made rather than at the deal, because
+// the lobby has to know the seat cap before anybody sits down — the expansion
+// seats six, the Original Edition five.
+func New(rng *rand.Rand, variant game.Variant) core.Game {
 	if rng == nil {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
-	return &Game{rng: rng}
+	if variant == "" {
+		variant = game.Original
+	}
+	return &Game{rng: rng, variant: variant}
 }
 
 func (g *Game) MinPlayers() int { return game.MinPlayers }
-func (g *Game) MaxPlayers() int { return game.MaxPlayers }
+func (g *Game) MaxPlayers() int { return game.MaxPlayersFor(g.variant) }
 
 func (g *Game) Started() bool { return g.state != nil }
 func (g *Game) Over() bool    { return g.state != nil && g.state.Phase == game.PhaseGameOver }
@@ -48,7 +56,7 @@ func (g *Game) Deal(seats []core.Seat) ([]core.Entry, error) {
 	for _, s := range seats {
 		own = append(own, game.Seat{ID: s.ID, Name: s.Name})
 	}
-	s, err := game.NewGame(own, "original", g.rng)
+	s, err := game.NewGame(own, g.variant, g.rng)
 	if err != nil {
 		return nil, err
 	}

@@ -26,6 +26,9 @@ const GLYPHS = {
   favor: "🙏", shuffle: "🔀", future: "🔮",
   "cat-taco": "🌮", "cat-rainbow": "🌈", "cat-melon": "🍉",
   "cat-potato": "🥔", "cat-beard": "🧔",
+  // Imploding Kittens expansion.
+  imploding: "🌀", reverse: "🔄", bottom: "⬇️", "feral-cat": "🐈",
+  alter: "🃏", "targeted-attack": "🎯",
 };
 
 // Every card arrives carrying the face the server drew for it, out of the scans
@@ -90,17 +93,91 @@ const me = {
 };
 
 // The kinds a Three of a Kind may demand, fetched so card names live only in Go.
-const catalogue = { demandable: [] };
+const catalogue = { demandable: [], kinds: [] };
 
-async function loadCardKinds() {
+// The slug matters: the expansion adds five more kinds a trio could demand, and
+// asking without it would offer the base game's list at an Imploding table.
+async function loadCardKinds(slug) {
   try {
-    const res = await fetch("/api/cards");
+    const res = await fetch(`/api/cards?game=${encodeURIComponent(slug || "kittens")}`);
     if (!res.ok) return;
     const body = await res.json();
     catalogue.demandable = body.demandable || [];
+    catalogue.kinds = body.kinds || [];
   } catch {
-    // Left empty: the demand picker falls back to explaining why it can't open.
+    // Left empty: the demand picker falls back to explaining why it can't open,
+    // and the rules sheet keeps its emoji.
+    return;
   }
+  paintRulesArt();
+}
+
+// paintRulesArt puts the real scanned card in the how-to-play sheet, where the
+// markup ships an emoji. A picture of the card is worth more than a glyph when
+// what you are trying to do is recognise it in your hand.
+//
+// The emoji stays in the markup as the fallback: a card with no art registered,
+// or a face that fails to load, keeps it rather than leaving a blank.
+function paintRulesArt() {
+  const faces = new Map((catalogue.kinds || []).map((k) => [k.slug, k.face]));
+
+  for (const dt of document.querySelectorAll(".rules-cards dt[data-slug]")) {
+    // Split the shipped label once and remember both halves, so repainting for
+    // another deck does not eat the text.
+    if (dt.dataset.label === undefined) {
+      const raw = dt.textContent.trim();
+      const cut = raw.indexOf(" ");
+      dt.dataset.glyph = cut > 0 ? raw.slice(0, cut) : "";
+      dt.dataset.label = cut > 0 ? raw.slice(cut + 1) : raw;
+    }
+
+    const glyph = () => {
+      const s = document.createElement("span");
+      s.className = "rules-glyph";
+      s.textContent = dt.dataset.glyph;
+      return s;
+    };
+
+    dt.replaceChildren();
+    const art = faces.get(dt.dataset.slug);
+    if (art) {
+      const img = document.createElement("img");
+      img.className = "rules-art";
+      img.src = artURL({ art });
+      img.alt = "";
+      // Eager, unlike the cards on the table: the sheet is one long scroll of
+      // sixteen faces, and a lazy one below the fold is still an empty box by the
+      // time you have scrolled to it — which is the whole thing this replaced.
+      img.decoding = "async";
+      img.onerror = () => img.replaceWith(glyph());
+      dt.append(img);
+    } else if (dt.dataset.glyph) {
+      dt.append(glyph());
+    }
+    dt.append(document.createTextNode(dt.dataset.label));
+  }
+}
+
+// ────────────────────────────────────────────────── rules language
+
+// Burmese is offered because this is a party game played out loud, and the
+// person reading the rules aloud is not always the person who set the server up.
+// Only the how-to-play sheet is translated; the table itself is mostly card
+// names and numbers.
+const rulesLang = () => (localStorage.getItem("ek:lang") === "my" ? "my" : "en");
+
+function setRulesLang(lang) {
+  localStorage.setItem("ek:lang", lang);
+  for (const s of document.querySelectorAll(".rules-lang")) {
+    s.hidden = s.dataset.lang !== lang;
+  }
+  for (const [id, on] of [["lang-en", lang === "en"], ["lang-my", lang === "my"]]) {
+    $(id).classList.toggle("on", on);
+    $(id).setAttribute("aria-checked", String(on));
+  }
+  document.querySelector(".rules-title").textContent =
+    lang === "my" ? "ကစားနည်း" : "How to play";
+  $("rules-close").textContent = lang === "my" ? "ပိတ်" : "Close";
 }
 
 // Handed in by the shell at mount. Declared here so every function below can
@@ -129,13 +206,22 @@ export default {
 
     registerSound({ tracks: TRACKS, sfx: SFX });
     configureCinema({ vfx: BOOM_VFX, onIdle: onCinemaIdle });
-    loadCardKinds();
+    loadCardKinds(ctx.game());
+    // The expansion's rules ship with this panel but are hidden at the base
+    // game's table, so a player is not told about cards their deck does not
+    // contain.
+    for (const el of document.querySelectorAll(".rules-expansion")) {
+      el.hidden = ctx.game() !== "kittens-imploding";
+    }
 
     $("hand-cover").onclick = toggleCoverHand;
     $("target-cancel").onclick = () => { me.awaitingTarget = false; rerender(); };
     $("log-collapse").onclick = () => setLogOpen(!logOpen());
     $("rules-table").onclick = () => showRules(true);
     $("rules-close").onclick = () => showRules(false);
+    $("lang-en").onclick = () => setRulesLang("en");
+    $("lang-my").onclick = () => setRulesLang("my");
+    setRulesLang(rulesLang());
     $("deck").onclick = () => {
       me.selected.clear();
       me.awaitingTarget = false;
@@ -233,9 +319,16 @@ function renderDeck(v) {
   const kittens = v.kittensLeft || 0;
   const pct = v.deckCount > 0 ? Math.round((kittens / v.deckCount) * 100) : 0;
   const risk = $("deck-risk");
-  risk.textContent = v.phase === "game_over" ? "" : `💥 ${pct}%`;
-  risk.title = `${kittens} Exploding Kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards`;
-  risk.classList.toggle("hot", pct >= 25);
+  // The armed Imploding Kitten is worth calling out on its own: it is the one
+  // card in the deck a Defuse cannot answer, so the plain percentage understates
+  // what is at stake.
+  const glyph = v.implodingArmed ? "🌀" : "💥";
+  risk.textContent = v.phase === "game_over" ? "" : `${glyph} ${pct}%`;
+  risk.title = v.implodingArmed
+    ? `${kittens} kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards — one of them is the armed Imploding Kitten, and no Defuse stops it`
+    : `${kittens} Exploding Kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards`;
+  risk.classList.toggle("hot", pct >= 25 || Boolean(v.implodingArmed));
+  risk.classList.toggle("armed", Boolean(v.implodingArmed));
 }
 
 function renderTurnBanner(v) {
@@ -246,7 +339,10 @@ function renderTurnBanner(v) {
     return;
   }
   const extra = v.turnsRemaining > 1 ? ` · ${v.turnsRemaining} turns to take` : "";
-  el.textContent = (v.currentId === ctx.me() ? "Your turn" : `${nameOf(v.currentId)}'s turn`) + extra;
+  // Only mentioned once it is not the obvious answer: saying "going forwards" on
+  // every turn of every game would be noise.
+  const way = v.direction < 0 ? " · 🔄 reversed" : "";
+  el.textContent = (v.currentId === ctx.me() ? "Your turn" : `${nameOf(v.currentId)}'s turn`) + extra + way;
 }
 
 function renderSeats(v) {
@@ -452,7 +548,23 @@ function logLine(e) {
       text = `${who} drew a card`;
       break;
     case "shuffled":  text = `${who} shuffled the deck`; break;
-    case "exploded":  text = `💥 ${who} drew an Exploding Kitten!`; big = true; break;
+    // Which way play is going is shared information, so the log says so rather
+    // than leaving people to work it out from whose turn came next.
+    case "reversed":  text = `🔄 ${who} reversed the order of play`; big = true; break;
+    // Where it went is secret; that it is live is not.
+    case "armed":
+      text = e.text ? `🌀 ${who} ${e.text}` : `🌀 ${who} drew the Imploding Kitten`;
+      big = true;
+      break;
+    case "altered":   text = `🃏 ${who} rearranged the top of the deck`; break;
+    // Both kittens end a game the same way, but naming the wrong one would be a
+    // lie — and with the expansion in, the Imploding one is the notable death.
+    case "exploded":
+      text = (e.cards || []).some((c) => c.slug === "imploding")
+        ? `🌀 ${who} drew the armed Imploding Kitten!`
+        : `💥 ${who} drew an Exploding Kitten!`;
+      big = true;
+      break;
     case "defused":   text = e.text ? `${who} ${e.text}` : `${who} defused it`; break;
     case "eliminated":text = `☠️ ${who} ${who === "You" ? "are" : "is"} out`; big = true; break;
     // A demand is announced out loud, so unlike a random steal it is logged in
@@ -566,12 +678,21 @@ function selectedCards(v) {
   return v.me.hand.filter((c) => me.selected.has(c.id));
 }
 
-const isCat = (slug) => slug.startsWith("cat-");
+// A Feral Cat is not one of the five collectible cats, but it plays as any of
+// them — so for stacking purposes it counts, and for matching it is a wildcard.
+const FERAL = "feral-cat";
+const isCat = (slug) => slug.startsWith("cat-") || slug === FERAL;
+const isWild = (slug) => slug === FERAL;
+
+// kindOf is what a selection has committed to being: the slug of the first
+// non-wild cat in it, or "" while it is still all Feral Cats and could become
+// anything.
+const kindOf = (sel) => (sel.find((c) => !isWild(c.slug)) || {}).slug || "";
 
 // selectableWith says whether a card may join the current selection. Only two
 // shapes of play exist, so anything else is refused at the point of tapping
 // rather than allowed to build up into something the server would reject:
-// a single non-cat card, or two-to-three cats of one kind.
+// a single non-cat card, or two-to-three cats that agree on a kind.
 function selectableWith(card, sel) {
   if (sel.length === 0) return { ok: true };
   const first = sel[0];
@@ -581,10 +702,13 @@ function selectableWith(card, sel) {
   if (!isCat(card.slug)) {
     return { ok: false, why: `${card.name} can't join a cat set — deselect the cats first.` };
   }
-  if (card.slug !== first.slug) {
-    return { ok: false, why: `A set has to match: only another ${first.name}.` };
-  }
   if (sel.length >= 3) return { ok: false, why: "Three is the biggest set." };
+
+  const kind = kindOf(sel);
+  if (!isWild(card.slug) && kind && card.slug !== kind) {
+    const named = sel.find((c) => c.slug === kind);
+    return { ok: false, why: `A set has to match: only another ${named.name} — or a Feral Cat.` };
+  }
   return { ok: true };
 }
 
@@ -628,23 +752,28 @@ function toggleSelect(id) {
 function selectionPlan(sel) {
   if (sel.length === 1) {
     const s = sel[0].slug;
-    if (["skip", "attack", "shuffle", "future"].includes(s)) return { ok: true, needsTarget: false };
-    if (s === "favor") return { ok: true, needsTarget: true };
+    if (["skip", "attack", "shuffle", "future", "reverse", "bottom", "alter"].includes(s)) {
+      return { ok: true, needsTarget: false };
+    }
+    if (s === "favor" || s === "targeted-attack") return { ok: true, needsTarget: true };
     if (s === "nope") return { ok: false, why: "Nope is played from the purple bar, not on your turn." };
     if (s === "defuse") return { ok: false, why: "Defuse is used automatically when you draw a kitten." };
     if (isCat(s)) return { ok: false, why: "Add a second matching cat to steal, or a third to demand." };
     return { ok: false, why: "" };
   }
+  // A set agrees if every non-wild card in it is the same kind; Feral Cats stand
+  // in for whatever the rest of the set is, so an all-Feral set works too.
+  const agrees = () => {
+    const kind = kindOf(sel);
+    return sel.every((c) => isCat(c.slug) && (isWild(c.slug) || c.slug === kind));
+  };
   if (sel.length === 2) {
-    if (sel[0].slug === sel[1].slug && isCat(sel[0].slug)) {
-      return { ok: true, needsTarget: true };
-    }
-    return { ok: false, why: "Two cats only work if they match." };
+    if (agrees()) return { ok: true, needsTarget: true };
+    return { ok: false, why: "Two cats only work if they match, or one of them is Feral." };
   }
   if (sel.length === 3) {
-    const same = sel.every((c) => c.slug === sel[0].slug);
-    if (same && isCat(sel[0].slug)) return { ok: true, needsTarget: true, needsName: true };
-    return { ok: false, why: "Three cats only work if all three match." };
+    if (agrees()) return { ok: true, needsTarget: true, needsName: true };
+    return { ok: false, why: "Three cats only work if they all match." };
   }
   return { ok: false, why: sel.length ? "That's too many cards." : "" };
 }
@@ -684,10 +813,13 @@ function renderPrompts(v) {
     openPlaceModal(v);
   } else if (v.me.mustGive && modalKind() !== "give") {
     openGiveModal(v);
+  } else if (v.me.mustAlter && modalKind() !== "alter") {
+    openAlterModal(v);
   } else if (v.phase === "game_over" && modalKind() !== "over") {
     openGameOverModal(v);
   } else if ((modalKind() === "place" && !v.me.mustPlace) ||
-             (modalKind() === "give" && !v.me.mustGive)) {
+             (modalKind() === "give" && !v.me.mustGive) ||
+             (modalKind() === "alter" && !v.me.mustAlter)) {
     closeModal();
   }
 }
@@ -810,12 +942,94 @@ function openPlaceModal(v) {
   place.className = "place";
   place.append(quick, slider, confirm);
 
+  // Both kittens are put back the same way; what differs is what it means. A
+  // defused Exploding Kitten is one hazard among several. The Imploding Kitten
+  // goes back face up, and the next player to reach it is simply out.
+  const imploding = v.placing === "imploding";
   openModal("place", {
-    title: "💥 Defused!",
-    body: "Slide the kitten back into the deck wherever you like. Nobody sees where it goes.",
+    title: imploding ? "🌀 Imploding Kitten!" : "💥 Defused!",
+    body: imploding
+      ? "It goes back face up. Whoever draws it next is out, and no Defuse will stop it. Nobody sees where you put it."
+      : "Slide the kitten back into the deck wherever you like. Nobody sees where it goes.",
     extra: [place],
   });
   readout();
+}
+
+// openAlterModal is Alter the Future: you look at the top of the deck and put it
+// back in whatever order you like.
+//
+// The cards arrive as faces with no identity — the server will not put a deck
+// card's ID on the wire even for the player looking at it — so this works in
+// positions throughout, and sends a permutation back.
+function openAlterModal(v) {
+  const faces = v.me.alter || [];
+  if (!faces.length) return;
+
+  // order[displayPosition] = the position that card started in.
+  let order = faces.map((_, i) => i);
+  let picked = -1;
+
+  const grid = document.createElement("div");
+  grid.className = "alter-grid";
+
+  const draw = () => {
+    grid.replaceChildren(...order.map((origin, pos) => {
+      const face = faces[origin];
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "card alter-card" + (picked === pos ? " picked" : "");
+      el.dataset.slug = face.slug;
+      el.dataset.pos = String(pos);
+
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = face.name;
+
+      const src = artURL(face);
+      if (src) {
+        const img = document.createElement("img");
+        img.className = "art";
+        img.src = src;
+        img.alt = "";
+        img.onerror = () => { img.remove(); el.classList.remove("has-art"); el.prepend(glyphEl(face)); };
+        el.classList.add("has-art");
+        el.append(img, label);
+      } else {
+        el.append(glyphEl(face), label);
+      }
+
+      const seat = document.createElement("span");
+      seat.className = "alter-pos";
+      seat.textContent = pos === 0 ? "Next" : `#${pos + 1}`;
+      el.append(seat);
+
+      el.onclick = () => {
+        if (picked === -1) picked = pos;
+        else if (picked === pos) picked = -1;
+        else {
+          [order[picked], order[pos]] = [order[pos], order[picked]];
+          picked = -1;
+        }
+        draw();
+      };
+      return el;
+    }));
+  };
+  draw();
+
+  const { ok } = openModal("alter", {
+    title: "🃏 Alter the Future",
+    body: faces.length > 1
+      ? "The next card is on the left. Tap two to swap them, then put them back."
+      : "One card left in the deck. Nothing to rearrange.",
+    cards: [grid],
+    ok: "Put them back",
+  });
+  ok.onclick = () => {
+    send({ type: "alter", order });
+    closeModal();
+  };
 }
 
 function openGameOverModal(v) {

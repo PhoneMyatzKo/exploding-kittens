@@ -192,58 +192,93 @@ function gameInfo(slug) {
 
 function renderGameList() {
   const games = catalogueOfGames.list;
-  $("menu-status").textContent = games.some((g) => g.playable)
+  $("menu-status").textContent = games.length
     ? ""
-    : "No games are playable on this server yet.";
+    : "No games are set up on this server yet.";
   $("menu-status").hidden = !$("menu-status").textContent;
 
   $("game-list").replaceChildren(...games.map((g) => {
     const li = document.createElement("li");
-    // A locked tile is a real button that says why, not a dead div: tapping it
-    // should answer the question it just raised.
+    // One control per tile: the whole card is the button. A "Play" pill inside it
+    // would be a button inside a button, which is invalid and leaves half the
+    // card dead to a tap.
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "game-tile" + (g.playable ? "" : " locked");
     tile.dataset.slug = g.slug;
 
-    const emoji = document.createElement("span");
-    emoji.className = "game-emoji";
-    emoji.textContent = g.emoji || "🎲";
+    tile.append(coverEl(g), tileTextEl(g), ctaEl(g));
 
-    const text = document.createElement("span");
-    text.className = "game-text";
-    const name = document.createElement("b");
-    name.textContent = g.name;
-    const tag = document.createElement("small");
-    // The player range is the thing somebody standing in a room with friends
-    // actually needs, so every tile carries it, built or not.
-    tag.textContent = `${g.tagline} · ${g.min}–${g.max} players`;
-    text.append(name, tag);
-
-    tile.append(emoji, text);
     if (!g.playable) {
-      const soon = document.createElement("span");
-      soon.className = "soon";
-      soon.textContent = "Soon";
-      tile.append(soon);
       // Deliberately not disabled: a disabled control cannot be focused or
       // tapped, so it can never answer the question it raises. Same bargain as a
       // blocked card in the hand — it refuses, and says why.
       tile.onclick = () => toast(`${g.name} isn't built yet.`);
     } else {
-      // A chevron so the one tile you can press looks pressable next to the ones
-      // you cannot — opacity alone reads as a rendering glitch.
-      const go = document.createElement("span");
-      go.className = "game-go";
-      go.textContent = "›";
-      go.setAttribute("aria-hidden", "true");
-      tile.append(go);
       tile.onclick = () => chooseGame(g.slug);
     }
 
     li.append(tile);
     return li;
   }));
+}
+
+// coverEl is the box art, or the game's emoji on a plain field when there is
+// none. A missing file falls back the same way rather than leaving a gap.
+function coverEl(g) {
+  const box = document.createElement("span");
+  box.className = "game-cover";
+
+  const glyph = () => {
+    const e = document.createElement("span");
+    e.className = "game-emoji";
+    e.textContent = g.emoji || "🎲";
+    return e;
+  };
+
+  const fallback = () => { box.classList.add("no-art"); box.append(glyph()); };
+
+  if (!g.cover) {
+    fallback();
+    return box;
+  }
+  const img = document.createElement("img");
+  img.src = g.cover;
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.onerror = () => { img.remove(); fallback(); };
+  box.append(img);
+  return box;
+}
+
+function tileTextEl(g) {
+  const text = document.createElement("span");
+  text.className = "game-text";
+
+  const name = document.createElement("b");
+  name.className = "game-name";
+  name.textContent = g.name;
+
+  const tag = document.createElement("small");
+  tag.className = "game-tag";
+  tag.textContent = g.tagline;
+
+  // The player range is the thing somebody standing in a room with friends
+  // actually needs, so every tile carries it, built or not.
+  const players = document.createElement("small");
+  players.className = "game-players";
+  players.textContent = `${g.min}–${g.max} players`;
+
+  text.append(name, tag, players);
+  return text;
+}
+
+function ctaEl(g) {
+  const cta = document.createElement("span");
+  cta.className = g.playable ? "game-cta" : "soon";
+  cta.textContent = g.playable ? "Play now" : "Soon";
+  return cta;
 }
 
 // chooseGame commits to a game and moves on to the room screen. The choice is
@@ -330,10 +365,18 @@ const gameCtx = {
   toast,
   nameOf,
   avatarChip,
+  game: () => app.game,
   rerender: () => render(),
   me: () => app.me,
   view: () => app.view,
 };
+
+// A catalogue slug is not always the name of a directory under web/games. An
+// expansion is its own tile on the menu — its own deck, theme and player cap —
+// but it is the same client as the game it expands, so it is served the same two
+// files. The mapping lives here rather than in the Go catalogue because it is a
+// fact about this directory's layout and nothing the server needs to know.
+const CLIENT_DIR = { "kittens-imploding": "kittens" };
 
 async function mountGame(slug) {
   if (!slug || mounted.slug === slug || mounted.loading === slug) return;
@@ -341,13 +384,14 @@ async function mountGame(slug) {
   // up in two URLs, one of them a module path — so it is checked rather than
   // trusted.
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return;
+  const dir = CLIENT_DIR[slug] || slug;
   mounted.loading = slug;
 
   let html, mod;
   try {
     const [res, module] = await Promise.all([
-      fetch(`games/${slug}/table.html`),
-      import(`./games/${slug}/index.js`),
+      fetch(`games/${dir}/table.html`),
+      import(`./games/${dir}/index.js`),
     ]);
     if (!res.ok) throw new Error(`server said ${res.status}`);
     html = await res.text();
@@ -364,6 +408,10 @@ async function mountGame(slug) {
 
   unmountGame();
   $("game-root").innerHTML = html;
+  // Which game's markup is in there, for anything outside this module that has
+  // to know the mount finished — the browser tests, chiefly, which otherwise
+  // cannot tell an empty root from one still being fetched.
+  $("game-root").dataset.game = slug;
   mounted.slug = slug;
   mounted.mod = mod;
   mounted.loading = "";
@@ -379,6 +427,7 @@ function unmountGame() {
   if (!mounted.slug) return;
   if (mounted.mod) mounted.mod.unmount();
   $("game-root").replaceChildren();
+  delete $("game-root").dataset.game;
   mounted.slug = "";
   mounted.mod = null;
 }
@@ -573,13 +622,18 @@ function renderLobby(v) {
   // The seat range comes from the catalogue rather than from a constant here, so
   // a game for ten is not held to a game for five. The server re-checks it; this
   // only decides whether the button lights up.
-  const info = gameInfo(app.game);
+  const info = gameInfo(v.game || app.game);
+  const min = info ? info.min : 2;
+  const max = info ? info.max : Infinity;
   const n = v.seats.filter((s) => s.connected).length;
-  const startable = n >= (info ? info.min : 2) && n <= (info ? info.max : Infinity);
+  const startable = n >= min && n <= max;
   $("start-btn").hidden = !v.me.host;
   $("start-btn").disabled = !startable;
   $("lobby-hint").textContent = v.me.host
-    ? (startable ? `${n} players ready.` : "Waiting for at least one more player…")
+    ? (startable
+        ? `${n} players ready.`
+        : n < min ? "Waiting for at least one more player…"
+        : `That's ${n} — this game seats ${max}.`)
     : "Waiting for the host to deal…";
 }
 

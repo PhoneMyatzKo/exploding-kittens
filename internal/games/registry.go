@@ -17,8 +17,12 @@ import (
 // something here to deal it.
 func New(slug string, rng *rand.Rand) (core.Game, error) {
 	switch slug {
-	case Kittens:
-		return kittens.New(rng), nil
+	case Kittens, KittensImploding:
+		// Both tiles are the same rules over a different deck, so the variant is
+		// what separates them — and VariantFor is the one place that mapping is
+		// written down.
+		v, _ := VariantFor(slug)
+		return kittens.New(rng, v), nil
 	case UNO:
 		return uno.New(rng), nil
 	}

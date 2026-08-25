@@ -17,16 +17,21 @@
 <!-- The landing screen. One game is playable today; the others are shown
      locked rather than hidden, because an empty hub reads as broken and
      "coming soon" is information. -->
-<section id="menu" class="screen">
-  <div class="panel">
-    <span id="sound-menu" class="sound-corner"></span>
+<section id="menu" class="screen menu">
+  <header class="topnav">
+    <span class="brand">🎲 Board Games</span>
+    <span id="sound-menu"></span>
+  </header>
 
-    <h1 class="logo">🎲 Board<br>Games</h1>
-    <p class="tagline">Pick a game. Everybody plays from their own phone.</p>
+  <main class="menu-body">
+    <div class="menu-head">
+      <h1 class="menu-title">Pick a game</h1>
+      <p class="menu-sub">Everybody plays from their own phone. No app, no sign-up.</p>
+    </div>
 
-    <p id="menu-status" class="muted">Loading games…</p>
+    <p id="menu-status" class="menu-status">Loading games…</p>
     <ul id="game-list" class="game-list"></ul>
-  </div>
+  </main>
 </section>
 
 <!-- ───────────────────────────── home ───────────────────────────── -->

@@ -160,6 +160,14 @@ export class Player {
   async pickGame(slug = "kittens") {
     await this.$(`.game-tile[data-slug="${slug}"]`).click();
     await this.page.waitForSelector("#create-btn", { state: "visible" });
+    // A game's own markup — its table, rules sheet and anything else it brings —
+    // is fetched on demand and injected into #game-root, so picking a game is
+    // not finished when the home screen appears. Waiting here rather than in
+    // every caller: nothing a test does next can be trusted until it has landed.
+    await this.page.waitForFunction(
+      (want) => document.getElementById("game-root").dataset.game === want,
+      slug,
+    );
     this.game = slug;
   }
 
