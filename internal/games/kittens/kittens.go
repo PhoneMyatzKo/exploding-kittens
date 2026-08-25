@@ -48,7 +48,7 @@ func (g *Game) Deal(seats []core.Seat) ([]core.Entry, error) {
 	for _, s := range seats {
 		own = append(own, game.Seat{ID: s.ID, Name: s.Name})
 	}
-	s, err := game.NewGame(own, g.rng)
+	s, err := game.NewGame(own, "original", g.rng)
 	if err != nil {
 		return nil, err
 	}

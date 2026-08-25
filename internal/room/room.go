@@ -7,6 +7,8 @@
 package room
 
 import (
+	kittengame "boardgame/kittens/internal/games/kittens/game"
+	//"boardgame/kittens/internal/games/uno/game"
 	"encoding/json"
 	"errors"
 	"log"
@@ -72,7 +74,7 @@ type Options struct {
 	Game string
 	// Variant is which card sets get dealt. Resolved from the slug by the
 	// catalogue before the room exists, so the room never has to know the mapping.
-	//Variant game.Variant
+	Variant kittengame.Variant
 }
 
 // Room is one table. All fields below cmds are owned exclusively by run().
@@ -82,7 +84,7 @@ type Room struct {
 	// again, so reading them needs no synchronisation.
 	Public  bool
 	Game    string
-	//Variant game.Variant
+	Variant kittengame.Variant
 
 	cmds      chan command
 	done      chan struct{}
@@ -178,8 +180,8 @@ func newRoom(code string, opts Options) *Room {
 		g, _ = games.New(slug, rng)
 	}
 	r := &Room{
-		Code:      code,
-		Public:    opts.Public,
+		Code:   code,
+		Public: opts.Public,
 		//Variant:   opts.Variant,
 		//Game:      opts.Game,
 		Game:      slug,
@@ -490,26 +492,27 @@ func (r *Room) fan(entries []core.Entry) {
 
 // toAction maps a wire message onto an engine action. ActNopeExpired is
 // deliberately absent: only the room's own timer may produce it.
-func toAction(playerID string, m ClientMsg) (game.Action, bool) {
-	a := game.Action{
-		PlayerID: playerID, CardIDs: m.CardIDs, TargetID: m.TargetID,
-		Index: m.Index, Named: m.Named, Order: m.Order,
+func toAction(playerID string, msg ClientMsg) (kittengame.Action, bool) {
+	a := kittengame.Action{
+		PlayerID: playerID, CardIDs: msg.CardIDs, TargetID: msg.TargetID,
+		Index: msg.Index, Named: msg.Named,
+		//Order: msg.Order,
 	}
-	switch m.Type {
+	switch msg.Type {
 	case "play":
-		a.Kind = game.ActPlay
+		a.Kind = kittengame.ActPlay
 	case "draw":
-		a.Kind = game.ActDraw
+		a.Kind = kittengame.ActDraw
 	case "nope":
-		a.Kind = game.ActNope
+		a.Kind = kittengame.ActNope
 	case "pass":
-		a.Kind = game.ActPass
+		a.Kind = kittengame.ActPass
 	case "give":
-		a.Kind = game.ActGiveCard
+		a.Kind = kittengame.ActGiveCard
 	case "place":
-		a.Kind = game.ActPlaceKitten
+		a.Kind = kittengame.ActPlaceKitten
 	case "alter":
-		a.Kind = game.ActAlterFuture
+		a.Kind = kittengame.ActAlterFuture
 	default:
 		return a, false
 	}
@@ -718,7 +721,7 @@ func (r *Room) summary() Summary {
 // capacity is how many seats this table has. It depends on the variant: the
 // Imploding Kittens pack brings a fifth kitten, which is what lets a sixth
 // player in.
-func (r *Room) capacity() int { return game.MaxPlayersFor(r.Variant) }
+func (r *Room) capacity() int { return kittengame.MaxPlayersFor(r.Variant) }
 
 // Summarize asks the room to describe itself. Returns false if the room is
 // shutting down or wedged, so a slow room cannot stall the whole listing.
