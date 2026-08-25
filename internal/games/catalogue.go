@@ -45,7 +45,7 @@ var catalogue = []Info{
 	{
 		Slug: KittensImploding, Name: "Imploding Kittens",
 		Tagline: "The expansion: reversals, wildcards, and one kitten no Defuse can stop.",
-		Emoji:   "🌀", Cover: "/cards/imploding/Imploding-Kitten.jpg",
+		Emoji:   "🌀", Cover: "/cards/Imploding_Kitten.jpg",
 		Min: kittensgame.MinPlayers, Max: kittensgame.MaxPlayersFor(kittensgame.Imploding), Playable: true,
 	},
 	{

@@ -234,10 +234,35 @@ async function theKitten() {
       );
     });
 
+    await check("buried, it is armed but not shown on the deck", async () => {
+      // It went back in the middle, and the deck is far more than two cards
+      // deep — so it provably is not the top card. Knowing it is armed is the
+      // whole table's business; knowing where it sits is nobody's.
+      const count = await deckCount(host);
+      assert(count > 2, `the deck is only ${count} cards, so "middle" may be the top`);
+      for (const p of players) {
+        assert(
+          !(await deckFace(p)),
+          `${p.name} can see the buried kitten on top of the deck`,
+        );
+      }
+    });
+
+    // Filled in by the loop below: what each player's deck showed at the moment
+    // the kitten surfaced. Collected there rather than checked there because the
+    // window is one turn wide — by the time the loop ends the card is drawn.
+    const surfaced = [];
+
     await check("it takes the next player to reach it, Defuse or not", async () => {
       for (let i = 0; i < 200; i++) {
         const lines = await host.logLines();
         if (lines.some((l) => /wins!/.test(l))) break;
+        if (!surfaced.length) {
+          for (const p of players) {
+            const face = await deckFace(p);
+            if (face) surfaced.push({ name: p.name, ...face });
+          }
+        }
         await clearNope(players);
         await clearModals(players);
         for (const p of players) {
@@ -258,12 +283,43 @@ async function theKitten() {
         `nobody was taken by the Imploding Kitten: ${JSON.stringify(lines.slice(-6))}`,
       );
     });
+
+    await check("once it surfaces, everybody sees the card itself", async () => {
+      // It has to have been on top at some point — it was drawn, and a card is
+      // drawn off the top. If nothing was captured the reveal is not happening.
+      assert(surfaced.length > 0, "the kitten was drawn but never appeared on the deck");
+      assert(
+        surfaced.length === players.length,
+        `only ${surfaced.map((s) => s.name).join(", ")} saw it — a face-up card is public`,
+      );
+      for (const s of surfaced) {
+        assert(/\.gif$/.test(s.src), `${s.name} was shown ${s.src}, not the face-up animation`);
+        assert(s.loaded, `${s.name}'s face-up picture never loaded (${s.src})`);
+        assert(/imploding/i.test(s.alt), `${s.name}'s deck names the card as ${JSON.stringify(s.alt)}`);
+      }
+    });
   } finally {
     for (const p of players) await p.page.context().close();
   }
 }
 
 // ─────────────────────────────────────────────────────────────────── helpers
+
+// The face-up card on the deck, or null when the deck is showing its back.
+// Reports whether the picture actually arrived, because a wrong path leaves the
+// element in place over the card back and looks like a styling choice.
+function deckFace(p) {
+  return p.page.$eval("#deck-face", (el) =>
+    el.hidden || !el.getAttribute("src")
+      ? null
+      : { src: el.getAttribute("src"), alt: el.alt, loaded: el.naturalWidth > 0 },
+  );
+}
+
+async function deckCount(p) {
+  const text = (await p.$("#deck-count").textContent()) || "";
+  return parseInt(text, 10);
+}
 
 async function demandable(slug) {
   const res = await fetch(`${BASE}/api/cards?game=${encodeURIComponent(slug)}`);
