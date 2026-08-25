@@ -79,7 +79,16 @@ export function report(title) {
 // ─────────────────────────────────────────────────────────── browser
 
 export async function launch() {
-  return chromium.launch({ headless: HEADLESS, slowMo: SLOWMO });
+  // CHROME points at a browser already on the machine, instead of the ~150MB one
+  // `npx playwright install` downloads — which some networks will not serve at
+  // all. Anything Chromium-based does: these checks only use standard DOM APIs
+  // and Playwright's own protocol, not a pinned build.
+  const exe = process.env.CHROME;
+  return chromium.launch({
+    headless: HEADLESS,
+    slowMo: SLOWMO,
+    ...(exe ? { executablePath: exe } : {}),
+  });
 }
 
 // Each player gets their own context, not just their own tab: localStorage holds
@@ -151,6 +160,14 @@ export class Player {
   async pickGame(slug = "kittens") {
     await this.$(`.game-tile[data-slug="${slug}"]`).click();
     await this.page.waitForSelector("#create-btn", { state: "visible" });
+    // A game's own markup — its table, rules sheet and anything else it brings —
+    // is fetched on demand and injected into #game-root, so picking a game is
+    // not finished when the home screen appears. Waiting here rather than in
+    // every caller: nothing a test does next can be trusted until it has landed.
+    await this.page.waitForFunction(
+      (want) => document.getElementById("game-root").dataset.game === want,
+      slug,
+    );
     this.game = slug;
   }
 
@@ -186,8 +203,8 @@ export class Player {
     return code;
   }
 
-  async join(code) {
-    await this.home();
+  async join(code, { game = "kittens" } = {}) {
+    await this.home(game);
     await this.$("#name-input").fill(this.name);
     await this.$("#code-input").fill(code);
     await this.$("#join-form button[type=submit]").click();

@@ -31,6 +31,10 @@ import (
 // Only background.jpeg, the card back, is served from the top level — hence the
 // narrower .jpeg pattern beside the per-card .jpg ones.
 //
+// A game's own artwork — UNO's stage art and card back — sits beside its rules
+// rather than in the shared pile, and is served whole rather than catalogued:
+// unlike the card scans, nothing samples it, so there is nothing to index.
+//
 //go:embed src/games/kittens/images/background.jpeg
 //go:embed src/games/kittens/images/explode/*.jpg
 //go:embed src/games/kittens/images/defuse/*.jpg
@@ -48,11 +52,17 @@ import (
 //go:embed src/games/kittens/images/alter/*.jpg
 //go:embed src/games/kittens/images/targeted-attack/*.jpg
 //go:embed src/avatars/*.png src/audio/*.mp3 src/games/kittens/video/*.mp4
+//go:embed src/games/uno/*.jpg
 var assets embed.FS
 
 // CardArt is the card-face image set, rooted so that a request for
 // "defuse/Defuse-Via-Crate.jpg" resolves without the src/games/kittens/images prefix.
 func CardArt() fs.FS { return sub("src/games/kittens/images") }
+
+// GameMedia is the per-game artwork, rooted at src/games so that a request for
+// "uno/uno-background.jpg" resolves. One route for every game's own pictures,
+// which is what keeps adding a game from adding a route.
+func GameMedia() fs.FS { return sub("src/games") }
 
 // Avatars is the set of player portraits, rooted the same way.
 func Avatars() fs.FS { return sub("src/avatars") }

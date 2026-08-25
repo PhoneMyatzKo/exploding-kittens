@@ -34,40 +34,45 @@ func TestCatalogueIsServed(t *testing.T) {
 		t.Fatalf("catalogue has %d entries, want the playable game and at least one announced", len(out.Games))
 	}
 
-	var kittens *games.Info
-	playable, announced := 0, 0
-	for i, g := range out.Games {
-		if g.Slug == games.Kittens {
-			kittens = &out.Games[i]
+	byslug := map[string]games.Info{}
+	playable := 0
+	for _, g := range out.Games {
+		byslug[g.Slug] = g
+		if g.Playable {
+			playable++
 		}
-		if g.Name == "" || g.Max < g.Min || g.Min < 2 {
-			t.Errorf("%s tile is not renderable: %+v", g.Slug, g)
+	}
+	for _, slug := range []string{games.Kittens, games.UNO} {
+		g, ok := byslug[slug]
+		if !ok {
+			t.Fatalf("catalogue does not list %q: %+v", slug, out.Games)
 		}
 		if !g.Playable {
-			announced++
-			continue
+			t.Errorf("%q is implemented but not marked playable", slug)
 		}
-		playable++
-		// Anything the menu offers has to resolve to a deck, or creating the room
-		// would be refused by the endpoint behind the tile.
-		if _, ok := games.VariantFor(g.Slug); !ok {
-			t.Errorf("%s is offered as playable but maps to no deck", g.Slug)
-		}
-		if !games.Playable(g.Slug) {
-			t.Errorf("%s is served as playable but Playable() disagrees", g.Slug)
+		if g.Name == "" || g.Max < g.Min || g.Min < 2 {
+			t.Errorf("%q tile is not renderable: %+v", slug, g)
 		}
 	}
-	if kittens == nil {
-		t.Fatalf("catalogue does not list %q: %+v", games.Kittens, out.Games)
+	// Something has to still be announced-but-unbuilt, or the "soon" badge and
+	// the refusal at POST /api/rooms are both untested paths.
+	if playable == len(out.Games) {
+		t.Error("every game is playable, so nothing exercises the locked tile")
 	}
-	if !kittens.Playable {
-		t.Error("the base game is not marked playable")
-	}
-	if playable == 0 {
-		t.Error("no games are playable, so the menu is a dead end")
-	}
-	if announced == 0 {
-		t.Error("nothing is announced, so the coming-soon tiles are untested")
+}
+
+// A tile the menu offers must be a tile the server can actually deal. This is
+// the check that keeps the catalogue and the rules registry from drifting: the
+// catalogue is data, and it is very easy to flip a flag with nothing behind it.
+func TestEveryPlayableGameHasRules(t *testing.T) {
+	for _, g := range games.All() {
+		_, err := games.New(g.Slug, nil)
+		if g.Playable && err != nil {
+			t.Errorf("%q is playable but has no rules: %v", g.Slug, err)
+		}
+		if !g.Playable && err == nil {
+			t.Errorf("%q has rules but is not marked playable", g.Slug)
+		}
 	}
 }
 
@@ -101,7 +106,7 @@ func TestRoomsDefaultToKittens(t *testing.T) {
 func TestUnbuiltAndUnknownGamesAreRefused(t *testing.T) {
 	base, _ := newTestServer(t)
 
-	for _, slug := range []string{"uno", "chess", "kittens "} {
+	for _, slug := range []string{"uno-no-mercy", "chess", "kittens "} {
 		t.Run(slug, func(t *testing.T) {
 			body := strings.NewReader(`{"game":` + quote(slug) + `}`)
 			resp, err := http.Post(base+"/api/rooms", "application/json", body)

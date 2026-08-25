@@ -1,0 +1,86 @@
+// The one blocking prompt, shared by every game.
+//
+// Generic on purpose: it knows about a title, a body, two slots for content and
+// up to two actions. It does not know what a card is — callers pass elements they
+// built themselves, which is what keeps the shell free of any one game's markup.
+//
+// The two slots differ only in how they lay out, and both are in index.html
+// because the sizing and the scrim are the shell's:
+//
+//   cards  a centred wrapping row — hands, the three cards off the top
+//   extra  a plain column for a game's own controls, hidden when unused
+//
+// Which prompt is open is tracked here rather than in a game, because a game's
+// render pass needs to ask "is my prompt already up?" without keeping a second
+// copy of the answer that could drift out of step with the DOM.
+
+import { $ } from "./dom.js";
+
+let current = null;
+
+// modalKind names the open prompt, or null. Games use it to avoid reopening a
+// prompt they have already put up, since render() runs on every server message.
+export const modalKind = () => current;
+
+// openModal returns its two action buttons so a caller can override what they do
+// without reaching back into the document for them. Both default to closing.
+export function openModal(kind, { title, body = "", cards = [], extra = [], ok = "", alt = "" }) {
+  current = kind;
+  $("modal").hidden = false;
+  // Which prompt this is, exposed for styling: the give picker wants smaller
+  // cards than the three See the Future shows you.
+  $("modal").dataset.kind = kind;
+  $("modal-title").textContent = title;
+  $("modal-body").textContent = body;
+
+  $("modal-cards").replaceChildren(...cards);
+  markScrollable($("modal-cards"));
+
+  const extraBox = $("modal-extra");
+  extraBox.replaceChildren(...extra);
+  // Hidden rather than empty: .modal-box is a grid, so an empty child would still
+  // spend a row gap and open a visible hole under the body text.
+  extraBox.hidden = extra.length === 0;
+
+  const okBtn = $("modal-ok");
+  okBtn.hidden = !ok;
+  okBtn.textContent = ok;
+  okBtn.onclick = closeModal;
+
+  const altBtn = $("modal-alt");
+  altBtn.hidden = !alt;
+  altBtn.textContent = alt;
+  altBtn.onclick = closeModal;
+
+  return { ok: okBtn, alt: altBtn };
+}
+
+export function closeModal() {
+  current = null;
+  $("modal").hidden = true;
+  delete $("modal").dataset.kind;
+}
+
+const scrollWatchers = new WeakMap();
+
+// markScrollable flags a list that has more below the fold, so it can be drawn
+// with a faded bottom edge. A row cut off mid-card is easy to read as the end of
+// the list, and browsers here paint no persistent scrollbar to say otherwise —
+// which is exactly how a hand of eleven looked like a hand of six.
+function markScrollable(el) {
+  const update = () => {
+    const more = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
+    el.classList.toggle("has-more", more);
+  };
+  el.onscroll = update;
+  // Whether a list overflows depends on the window as much as on the contents:
+  // turning a phone sideways, or dragging a desktop window shorter, changes the
+  // answer with no scroll and no re-render to notice it.
+  if (!scrollWatchers.has(el)) {
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    scrollWatchers.set(el, ro);
+  }
+  // The modal has only just been shown, so wait for layout before measuring.
+  requestAnimationFrame(update);
+}
