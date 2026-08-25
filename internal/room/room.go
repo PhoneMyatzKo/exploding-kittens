@@ -1,14 +1,17 @@
 // Package room owns the lifetime of a single game table.
 //
 // Concurrency model: every Room has exactly one goroutine (run) that touches its
-// members and its *game.State. WebSocket readers never mutate anything; they
-// hand commands to that goroutine over a channel. That is what makes the whole
-// server race-free without a single mutex around game logic.
+// members and its core.Game. WebSocket readers never mutate anything; they hand
+// commands to that goroutine over a channel. That is what makes the whole server
+// race-free without a single mutex around game logic — and it is why a Game's
+// methods may hand out pointers into their own state without locking.
+//
+// The room knows which game it is hosting only as a catalogue slug. Everything
+// that slug means — which cards, how many seats, what a legal move is — lives
+// behind core.Game, so nothing here imports a game's rules.
 package room
 
 import (
-	kittengame "boardgame/kittens/internal/games/kittens/game"
-	//"boardgame/kittens/internal/games/uno/game"
 	"encoding/json"
 	"errors"
 	"log"
@@ -69,22 +72,19 @@ type Options struct {
 	// Public lists the room in the lobby browser.
 	Public bool
 	// Game is the catalogue slug this table is playing. The room carries it
-	// without interpreting it: which games exist, and which are playable, is the
-	// server's business, not the table's.
+	// without interpreting it: which games exist, which are playable and which
+	// deck each one deals are the catalogue's business, not the table's — the
+	// slug goes to games.New and the rules that come back are all the room sees.
 	Game string
-	// Variant is which card sets get dealt. Resolved from the slug by the
-	// catalogue before the room exists, so the room never has to know the mapping.
-	Variant kittengame.Variant
 }
 
 // Room is one table. All fields below cmds are owned exclusively by run().
 type Room struct {
 	Code string
-	// Public, Game and Variant are set once before run() starts and never written
-	// again, so reading them needs no synchronisation.
-	Public  bool
-	Game    string
-	Variant kittengame.Variant
+	// Public and Game are set once before run() starts and never written again,
+	// so reading them needs no synchronisation.
+	Public bool
+	Game   string
 
 	cmds      chan command
 	done      chan struct{}
@@ -182,8 +182,8 @@ func newRoom(code string, opts Options) *Room {
 	r := &Room{
 		Code:   code,
 		Public: opts.Public,
-		//Variant:   opts.Variant,
-		//Game:      opts.Game,
+		// slug, not opts.Game: an unbuilt one has just been swapped for the
+		// default, and the room must report what it is actually dealing.
 		Game:      slug,
 		game:      g,
 		cmds:      make(chan command, 32),
@@ -399,7 +399,6 @@ func (r *Room) handleStart(m *member) {
 			present = append(present, mm)
 		}
 	}
-	//s, err := game.NewGame(seats, r.Variant, r.rng)
 	entries, err := r.game.Deal(seats)
 	if err != nil {
 		r.sendErr(m, err.Error())
@@ -488,35 +487,6 @@ func (r *Room) fan(entries []core.Entry) {
 		}
 		r.appendLog(e)
 	}
-}
-
-// toAction maps a wire message onto an engine action. ActNopeExpired is
-// deliberately absent: only the room's own timer may produce it.
-func toAction(playerID string, msg ClientMsg) (kittengame.Action, bool) {
-	a := kittengame.Action{
-		PlayerID: playerID, CardIDs: msg.CardIDs, TargetID: msg.TargetID,
-		Index: msg.Index, Named: msg.Named,
-		//Order: msg.Order,
-	}
-	switch msg.Type {
-	case "play":
-		a.Kind = kittengame.ActPlay
-	case "draw":
-		a.Kind = kittengame.ActDraw
-	case "nope":
-		a.Kind = kittengame.ActNope
-	case "pass":
-		a.Kind = kittengame.ActPass
-	case "give":
-		a.Kind = kittengame.ActGiveCard
-	case "place":
-		a.Kind = kittengame.ActPlaceKitten
-	case "alter":
-		a.Kind = kittengame.ActAlterFuture
-	default:
-		return a, false
-	}
-	return a, true
 }
 
 // ------------------------------------------------------------------- timers
@@ -717,11 +687,6 @@ func (r *Room) summary() Summary {
 	s.Joinable = !r.game.Started() && s.Players > 0 && s.Players < r.game.MaxPlayers()
 	return s
 }
-
-// capacity is how many seats this table has. It depends on the variant: the
-// Imploding Kittens pack brings a fifth kitten, which is what lets a sixth
-// player in.
-func (r *Room) capacity() int { return kittengame.MaxPlayersFor(r.Variant) }
 
 // Summarize asks the room to describe itself. Returns false if the room is
 // shutting down or wedged, so a slow room cannot stall the whole listing.

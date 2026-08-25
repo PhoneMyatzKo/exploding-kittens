@@ -15,9 +15,9 @@ import (
 // Slugs. Rooms default to Kittens, so an older client that knows nothing about
 // games still gets a game.
 const (
-	Kittens = "kittens"
+	Kittens          = "kittens"
 	KittensImploding = "kittens-imploding"
-	UNO     = "uno"
+	UNO              = "uno"
 )
 
 // Info is one tile on the menu.
@@ -26,7 +26,7 @@ type Info struct {
 	Name    string `json:"name"`
 	Tagline string `json:"tagline"`
 	Emoji   string `json:"emoji"`
-	Cover string `json:"cover,omitempty"`
+	Cover   string `json:"cover,omitempty"`
 	Min     int    `json:"min"`
 	Max     int    `json:"max"`
 	// Playable is false for a game that is announced but not built. The menu

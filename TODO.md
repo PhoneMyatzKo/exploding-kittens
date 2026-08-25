@@ -2,6 +2,22 @@
 
 ## Done
 
+- ~~Repair what the UNO merge dropped~~ — the `games/UNO` merge brought the
+  multi-game core in and took Alter the Future out with it, which **deadlocked
+  every expansion game**: the wire case was lost when `toAction` moved from
+  `internal/room` into the kittens adapter, `core.ClientMsg` had no field for the
+  permutation, and `BlockedOn`/`AutoMove` could not see `PhaseAlter`, so the idle
+  watchdog could not rescue the table either. Symptom: `play.js` on the expansion
+  deck, no winner after 400 steps; the base deck won in 34. Now guarded by
+  `internal/games/kittens/kittens_test.go` — the wire-type table, the order
+  round-trip, and both watchdog hooks — because none of the three was visible to
+  a rules test or to the compiler. Also fixed in the same pass: `static_test.go`
+  still imported the pre-move `internal/game`, so the package never compiled and
+  the card-art coverage check had silently not run (it now covers both decks);
+  and `internal/room` stopped importing the kittens engine, which it was doing
+  only to feed dead code — `toAction`, `capacity()` and a `Room.Variant` nothing
+  assigned. The room now knows a game as a catalogue slug and nothing else.
+
 - ~~"Nope" action windows timer need longer (+20s)~~ — now 20s. The server sends
   the window length with every open window, so the countdown bar can't drift out
   of step with it again.
@@ -466,12 +482,19 @@ first — the same class of bug the mute toggle exists to prevent.
    demand modal. `play.js` will exercise it the moment a trio turns up, but the
    deal is random and one rarely does — see the note in `web/testing/README.md`
    about why a check that almost never runs is worse than none.
-4. **UNO's own module**, once 1–3 are done and Exploding Kittens still passes
-   `web/testing/`. All three are done and it does, so this is the next step: a
-   `games/uno/` directory with a `table.html` and an `index.js` exporting the
-   shape `mountGame()` documents, plus the palette block that is already in
-   `style.css`. Nothing in the shell should need to change — if it does, that is
-   the finding, and it belongs in this file.
+4. ~~**UNO's own module**~~ Done, on the `games/UNO` branch. `web/games/uno/`
+   carries `table.html`, `index.js` and `cards.js`, and `web/testing/uno.js`
+   plays a hand through to a winner including a challenged Wild Draw Four. It
+   came with `internal/core` and `internal/games/registry.go`, so most of
+   "Direction: multi-game core" below landed at the same time — read the code
+   before working from that section.
+
+   The finding this section asked for: **the shell did change, and the thing that
+   broke was the merge, not the design.** `internal/core` is the right seam and
+   the UNO adapter sits on it cleanly; what went wrong was six files where the
+   conflict resolution took the older side, which is how Alter the Future was
+   lost. The lesson is not "avoid the split" — it is that a seam this size needs
+   its own tests at the seam, which is what `kittens_test.go` now is.
 
 ### Watch out
 

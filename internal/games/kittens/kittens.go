@@ -119,7 +119,7 @@ func cardsOrNil(cards []game.Card) any {
 func toAction(playerID string, m core.ClientMsg) (game.Action, bool) {
 	a := game.Action{
 		PlayerID: playerID, CardIDs: m.CardIDs, TargetID: m.TargetID,
-		Index: m.Index, Named: m.Named,
+		Index: m.Index, Named: m.Named, Order: m.Order,
 	}
 	switch m.Type {
 	case "play":
@@ -134,6 +134,8 @@ func toAction(playerID string, m core.ClientMsg) (game.Action, bool) {
 		a.Kind = game.ActGiveCard
 	case "place":
 		a.Kind = game.ActPlaceKitten
+	case "alter":
+		a.Kind = game.ActAlterFuture
 	default:
 		return a, false
 	}
@@ -152,6 +154,8 @@ func (g *Game) BlockedOn() string {
 		return g.state.CurrentID()
 	case game.PhaseFavor:
 		return g.state.AwaitingGiftFrom()
+	case game.PhaseAlter:
+		return g.state.AlteringID()
 	}
 	return ""
 }
@@ -175,6 +179,15 @@ func (g *Game) AutoMove(playerID string) ([]core.Entry, error) {
 			return nil, core.ErrNoMove
 		}
 		a = game.Action{Kind: game.ActGiveCard, PlayerID: playerID, CardIDs: []int{p.Hand[0].ID}}
+	case game.PhaseAlter:
+		// The identity permutation: leave the top of the deck exactly as it is.
+		// Least destructive by definition — whoever dropped off learns nothing and
+		// changes nothing, and the table gets to carry on.
+		order := make([]int, len(g.state.AlterFaces()))
+		for i := range order {
+			order[i] = i
+		}
+		a = game.Action{Kind: game.ActAlterFuture, PlayerID: playerID, Order: order}
 	default:
 		return nil, core.ErrNoMove
 	}

@@ -49,10 +49,15 @@ type ClientMsg struct {
 	CardID   int    `json:"cardId"`
 
 	// Exploding Kittens: a play can be several cards, a Kitten goes back at an
-	// index, and a Three of a Kind names what it wants.
+	// index, a Three of a Kind names what it wants, and Alter the Future sends
+	// back the order the top of the deck should end up in.
 	CardIDs []int  `json:"cardIds"`
 	Index   int    `json:"index"`
 	Named   string `json:"named"`
+	// Order is positions, not card IDs: the client is shown those cards' faces
+	// without ever being told which cards they are, so it has nothing else to
+	// name them by. See view.FaceCard.
+	Order []int `json:"order"`
 
 	// UNO: a wild names a colour, and going down to one card is announced.
 	Colour string `json:"colour"`
