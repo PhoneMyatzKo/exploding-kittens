@@ -62,6 +62,18 @@ type ClientMsg struct {
 	// UNO: a wild names a colour, and going down to one card is announced.
 	Colour string `json:"colour"`
 	SayUno bool   `json:"sayUno"`
+
+	// State of Shadows: a proposal puts cards and money on both sides of the
+	// table at once, so CardIDs above is what is offered and WantIDs is what is
+	// asked for; Amount is influence promised and Demand is influence extorted.
+	// Slug names a secret (the Lawyer's inspection), Text is a leak or a note
+	// attached to a proposal, and OfferID answers one that is already open.
+	WantIDs []int  `json:"wantIds"`
+	Amount  int    `json:"amount"`
+	Demand  int    `json:"demand"`
+	Slug    string `json:"slug"`
+	Text    string `json:"text"`
+	OfferID int    `json:"offerId"`
 }
 
 // Entry is one line of the shared play-by-play, and the only shape in which a

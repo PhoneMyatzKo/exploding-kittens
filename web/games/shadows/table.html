@@ -1,0 +1,402 @@
+<!-- State of Shadows — everything on screen once the table is dealt.
+     Injected by mountGame() in app.js rather than living in index.html, so the
+     shell (menu, home, public lobby, lobby, modal, toasts) stays the only markup
+     shared between games.
+
+     The structural ids and classes — table, seats, hand, log, handbar — are
+     deliberately the ones the other two games use. Only one game is ever mounted
+     at a time, so they cannot collide, and sharing them means the stylesheet and
+     the browser tests read one table rather than one per game. The ids that are
+     this game's alone are prefixed sh-. app.js names none of them. -->
+
+<section id="table" class="screen table" hidden>
+  <header class="topbar">
+    <span id="table-code" class="pill"></span>
+    <span id="sh-round" class="pill"></span>
+    <span id="turn-banner" class="turn-banner"></span>
+    <span id="sound-table"></span>
+    <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
+  </header>
+
+  <div id="seats" class="seats"></div>
+
+  <div class="table-body">
+    <!-- Three panels, and every one of them is information: what you are, what
+         the room is saying out loud, and what you have privately established.
+         Side by side once there is width, stacked and scrollable on a phone. -->
+    <div class="sh-board">
+      <section id="sh-me" class="panel sh-panel" aria-label="Your position"></section>
+
+      <section class="panel sh-panel" aria-label="The newsfeed">
+        <h3 class="sh-panel-head">Newsfeed <span class="sh-note">anonymous</span></h3>
+        <ol id="sh-feed" class="sh-feed" aria-live="polite"></ol>
+      </section>
+
+      <section class="panel sh-panel" aria-label="Your dossier">
+        <h3 class="sh-panel-head">Dossier <span class="sh-note">yours alone</span></h3>
+        <ol id="sh-dossier" class="sh-dossier"></ol>
+      </section>
+    </div>
+
+    <aside id="log-panel" class="log-panel">
+      <button id="log-collapse" class="log-head" aria-expanded="true"
+              aria-controls="log" title="Hide the log">
+        <strong>Play by play</strong>
+        <span id="log-caret" class="caret">▾</span>
+      </button>
+      <ol id="log" class="log" aria-live="polite"></ol>
+    </aside>
+  </div>
+
+  <!-- Open proposals. Above the hand because answering one is usually the most
+       urgent thing on screen, and because a proposal that scrolled off would be
+       a deal quietly missed. -->
+  <div id="sh-offers" class="sh-offers" hidden></div>
+
+  <footer class="handbar">
+    <div id="hand" class="hand"></div>
+
+    <!-- Two rows, and the split is the rule: the first spends your one action
+         for the round, the second costs influence and can be done at any moment,
+         including while somebody else is thinking. -->
+    <div class="actions sh-actions">
+      <span class="sh-row-label">This round</span>
+      <button id="sh-skill" class="btn primary small"></button>
+      <button id="sh-power" class="btn small">Play a Power card</button>
+      <button id="sh-clean" class="btn small">Clean record</button>
+      <button id="sh-evidence" class="btn small">Dig for evidence</button>
+      <button id="sh-seize" class="btn small">Seize a card</button>
+      <button id="sh-accuse" class="btn nope small">Name the Mastermind</button>
+      <button id="sh-pass" class="btn ghost small">Pass</button>
+    </div>
+    <div class="actions sh-actions">
+      <span class="sh-row-label">Any time</span>
+      <button id="sh-offer" class="btn small">Propose a deal</button>
+      <button id="sh-news" class="btn small">Leak to the feed</button>
+      <button id="sh-leak" class="btn small">Whistleblow</button>
+      <button id="sh-pardon" class="btn small">Issue a pardon</button>
+      <span id="hint" class="hint"></span>
+    </div>
+  </footer>
+</section>
+
+<!-- ───────────────────────── rules ───────────────────────── -->
+<aside id="rules-panel" class="rules-panel" hidden>
+  <div class="rules-head">
+    <strong class="rules-title">How to play</strong>
+    <!-- Two buttons acting as radios, the same pattern Exploding Kittens uses.
+         The choice is remembered, because a table that reads Burmese reads it
+         every round. -->
+    <div class="lang-toggle" role="radiogroup" aria-label="Language">
+      <button id="lang-en" class="lang on" role="radio" aria-checked="true" type="button">EN</button>
+      <button id="lang-my" class="lang" role="radio" aria-checked="false" type="button" lang="my">မြန်မာ</button>
+    </div>
+    <button id="rules-close" class="btn ghost small">Close</button>
+  </div>
+  <div class="rules-body">
+
+  <!-- ─────────────────────────── English ─────────────────────────── -->
+  <section class="rules-lang" data-lang="en">
+    <p><b>Everyone has a secret. Someone is collecting them.</b> Your position is
+      public and your secret is not. Four rounds, one action each per round, and
+      a coup at the end of it if anybody has managed to buy enough of the room.</p>
+
+    <h3>Who wins</h3>
+    <dl class="rules-cards">
+      <dt>The Mastermind</dt>
+      <dd>Holds the Coup card, dealt secretly in round three. Wins by owning
+        three fifths of the table as Pawns when a round closes.</dd>
+      <dt>The Resistance</dt>
+      <dd>Holds the Anti-Coup card. Wins by naming the Mastermind — one shot,
+        and getting it wrong pays the Mastermind three influence.</dd>
+      <dt>Everybody else</dt>
+      <dd>Wins with the state: reach the end of round four owned by nobody.</dd>
+    </dl>
+
+    <h3>The rounds</h3>
+    <p><b>1 — The Cold War.</b> Positions and secrets are dealt. Nothing to
+      attack anybody with yet, so this is the round you find out what there is to
+      find out.</p>
+    <p><b>2 — The Arms Race.</b> Power cards are dealt. Trade, pay and extort
+      until the card you hold matches the secret somebody keeps.</p>
+    <p><b>3 and 4 — The Catalyst.</b> One Coup card and one Anti-Coup card go
+      out, in secret. The Mastermind counts, the Resistance hunts, and round four
+      is the last of it.</p>
+
+    <h3>Your action</h3>
+    <p>One per round, in seat order. Use your position, play a Power card, buy a
+      clean record, dig your way out of somebody's pocket, take a card off a Pawn
+      of yours, name the Mastermind — or pass.</p>
+
+    <h3>Blackmail</h3>
+    <p>Play a Power card at somebody and it lands if it matches the secret they
+      are keeping. If it lands they are your <b>Pawn</b>: you see their hand and
+      may take a card off them once a round. If it misses, the card is gone.</p>
+    <p><b>The table is never told which.</b> Everybody sees that you moved
+      against somebody. Only the two of you learn what happened.</p>
+
+    <h3>Getting out</h3>
+    <p>A Pawn can <b>dig</b>: two turns to learn who owns them, three to walk out
+      in a mutiny. They can also <b>whistleblow</b> for free once a round, which
+      reaches the Resistance and nobody else — and the Resistance can spend
+      influence on a <b>pardon</b> that frees a Pawn outright.</p>
+    <p>If nobody has exploited your secret yet, a <b>clean record</b> replaces it
+      with a fresh one, and everybody's notes about you quietly go stale.</p>
+
+    <h3>Influence</h3>
+    <p>Three to start and two more each round. It pays for pardons, clean records
+      and leaks, and it is the only thing in the game you can honestly promise.</p>
+
+    <h3>The newsfeed</h3>
+    <p>Anybody can pay to put a line on the public board, anonymously. Nothing
+      posted there is checked. Sending somebody after a secret that does not
+      exist costs them a card and costs you one influence.</p>
+
+    <h3>Deals</h3>
+    <p>A proposal can hand over cards, promise influence, demand influence, or
+      all three at once — the difference between a trade and an extortion is
+      which boxes you filled in. Proposals expire at the end of the round.</p>
+
+    <h3>The secrets and what answers them</h3>
+  </section>
+
+  <!-- ─────────────────────────── မြန်မာ ─────────────────────────── -->
+  <!-- Terms that are also on-screen buttons — Mastermind, Resistance, Coup,
+       Anti-Coup, Pawn, Power card, Kompromat — are kept in English, the same
+       choice Exploding Kittens makes for its card names: it is what a player
+       reads on their own screen a moment later. -->
+  <section class="rules-lang" data-lang="my" lang="my" hidden>
+    <p><b>လူတိုင်းမှာ လျှို့ဝှက်ချက် ရှိကြသည်။ တစ်ဦးဦးက ၎င်းတို့ကို
+      စုဆောင်းနေသည်။</b> သင့်ရာထူးသည် အများသိသည်၊ သင့်လျှို့ဝှက်ချက်မူ
+      မသိကြပါ။ အပတ် ၄ ပတ်၊ တစ်ပတ်လျှင် တစ်ဦးစီ လုပ်ဆောင်ချက် တစ်ခုစီ၊ ပြီးလျှင်
+      တစ်ဦးဦးက အခန်းထဲမှ လုံလောက်သော ဩဇာကို ဝယ်ယူနိုင်ခဲ့လျှင် အဆုံးသတ်တွင်
+      Coup တစ်ခု ဖြစ်ပေါ်လာမည်။</p>
+
+    <h3>ဘယ်သူ အနိုင်ရမလဲ</h3>
+    <dl class="rules-cards">
+      <dt>The Mastermind</dt>
+      <dd>အပတ် ၃ တွင် လျှို့ဝှက်စွာ ဝေပေးသည့် Coup ကတ်ကို ကိုင်ဆောင်သည်။
+        ပွဲစားပွဲရှိ ၅ ပုံ ၃ ပုံကို Pawn အဖြစ် ပိုင်ဆိုင်နိုင်လျှင် အပတ်တစ်ပတ်
+        ကုန်ဆုံးချိန်တွင် အနိုင်ရသည်။</dd>
+      <dt>The Resistance</dt>
+      <dd>Anti-Coup ကတ်ကို ကိုင်ဆောင်သည်။ Mastermind ကို အမည်တပ် ခေါ်ဆိုနိုင်လျှင်
+        အနိုင်ရသည် — တစ်ကြိမ်သာ ခွင့်ရှိပြီး၊ မှားယွင်းပါက Mastermind ထံသို့
+        ဩဇာ သုံးခု ပေးဆပ်ရမည်။</dd>
+      <dt>ကျန်သူများ</dt>
+      <dd>နိုင်ငံနှင့်အတူ အနိုင်ရသည် — အပတ် ၄ အဆုံးတွင် မည်သူမျှ မပိုင်ဆိုင်ဘဲ
+        ရောက်ရှိနေခြင်းဖြင့် အနိုင်ရသည်။</dd>
+    </dl>
+
+    <h3>အပတ်များ</h3>
+    <p><b>၁ — The Cold War။</b> ရာထူးများနှင့် လျှို့ဝှက်ချက်များကို
+      ခွဲဝေသည်။ မည်သူ့ကိုမျှ တိုက်ခိုက်ရန် လက်နက် မရှိသေးသဖြင့်၊ ဤအပတ်သည်
+      ရှာဖွေတွေ့ရှိစရာများကို ရှာဖွေရမည့်အပတ် ဖြစ်သည်။</p>
+    <p><b>၂ — The Arms Race။</b> Power ကတ်များကို ခွဲဝေသည်။ သင်ကိုင်ဆောင်ထားသည့်
+      ကတ်က တစ်ဦးဦး၏ လျှို့ဝှက်ချက်နှင့် ကိုက်ညီအောင် ရောင်းဝယ်ဖလှယ်ခြင်း၊
+      ငွေပေးခြင်း၊ ခြိမ်းခြောက်ခြင်း လုပ်ကြပါ။</p>
+    <p><b>၃ နှင့် ၄ — The Catalyst။</b> Coup ကတ် တစ်ကတ်နှင့် Anti-Coup ကတ်
+      တစ်ကတ် လျှို့ဝှက်စွာ ထွက်ရှိလာသည်။ Mastermind က ရေတွက်နေပြီး၊
+      Resistance က ရှာဖွေနေသည်၊ အပတ် ၄ သည် နောက်ဆုံးအပတ် ဖြစ်သည်။</p>
+
+    <h3>သင့်လုပ်ဆောင်ချက်</h3>
+    <p>ထိုင်ခုံအစီအစဉ်အတိုင်း၊ အပတ်တစ်ပတ်လျှင် တစ်ဦးစီ တစ်ခု။ သင့်ရာထူးကို
+      အသုံးပြုပါ၊ Power ကတ် ချပါ၊ Clean record ဝယ်ပါ၊ တစ်ဦးဦး၏ လက်ထဲမှ
+      တူးဆွရှာဖွေပါ၊ သင့် Pawn ထံမှ ကတ်တစ်ကတ် ယူပါ၊ Mastermind ကို
+      အမည်တပ်ခေါ်ပါ — သို့မဟုတ် လက်ခံပါ (pass)။</p>
+
+    <h3>ခြိမ်းခြောက်မှု</h3>
+    <p>Power ကတ်တစ်ကတ်ကို တစ်ဦးဦးအပေါ် ချလိုက်ပါက၊ သူထားရှိသည့် လျှို့ဝှက်ချက်နှင့်
+      ကိုက်ညီလျှင် အလုပ်ဖြစ်သည်။ အလုပ်ဖြစ်ပါက သူသည် သင့် <b>Pawn</b>
+      ဖြစ်သွားမည် — သင် သူ့လက်ကို မြင်နိုင်ပြီး အပတ်တစ်ပတ်လျှင် တစ်ကြိမ် သူ့ထံမှ
+      ကတ်တစ်ကတ် ယူနိုင်သည်။ မလှမ်းမီပါက ကတ်သည် ကုန်သွားသည်။</p>
+    <p><b>ဘယ်လိုဖြစ်သွားလဲဆိုတာ ပွဲစားပွဲကို ဘယ်တော့မှ မပြောပါ။</b> လူတိုင်း
+      သင် တစ်ဦးဦးကို တိုက်ခိုက်ကြောင်း မြင်ရသော်လည်း၊ အဖြစ်အပျက်ကို
+      သင်တို့နှစ်ဦးသာ သိရသည်။</p>
+
+    <h3>လွတ်မြောက်ခြင်း</h3>
+    <p>Pawn တစ်ဦးသည် <b>တူးဆွ</b>နိုင်သည် — နှစ်လှည့်ဆိုလျှင် ဘယ်သူ
+      ပိုင်ဆိုင်ကြောင်း သိရမည်၊ သုံးလှည့်ဆိုလျှင် ပုန်ကန်ပြီး လွတ်မြောက်နိုင်မည်။
+      အပတ်တစ်ပတ်လျှင် တစ်ကြိမ် အခမဲ့ <b>whistleblow</b> (သတင်းပေး) လုပ်နိုင်ပြီး၊
+      ၎င်းသည် Resistance ထံသို့သာ ရောက်ရှိသည် — Resistance ကလည်း ဩဇာ
+      အသုံးပြု၍ <b>pardon</b> ထုတ်ပေးနိုင်ပြီး Pawn တစ်ဦးကို လုံးဝ
+      လွတ်မြောက်စေနိုင်သည်။</p>
+    <p>မည်သူမျှ သင့်လျှို့ဝှက်ချက်ကို မလှမ်းသေးပါက <b>clean record</b> တစ်ခုက
+      အသစ်တစ်ခုနှင့် လဲပေးမည်ဖြစ်ပြီး၊ လူတိုင်း၏ သင့်အပေါ် မှတ်စုများသည်
+      တိတ်တဆိတ် ဟောင်းနွမ်းသွားမည်။</p>
+
+    <h3>ဩဇာ</h3>
+    <p>အစတွင် သုံးခု၊ အပတ်တိုင်း နှစ်ခု ထပ်ရသည်။ Pardon၊ Clean record နှင့်
+      Leak များအတွက် အသုံးပြုရပြီး၊ ဤကစားနည်းတွင် သင် ရိုးသားစွာ ကတိပေးနိုင်သော
+      တစ်ခုတည်းသော အရာလည်း ဖြစ်သည်။</p>
+
+    <h3>သတင်းစာမျက်နှာ</h3>
+    <p>မည်သူမဆို ငွေပေး၍ အမည်ဝှက်ဖြင့် အများသိ သတင်းတစ်ကြောင်း တင်နိုင်သည်။
+      ထိုသတင်းများကို စစ်ဆေးမှု မရှိပါ။ မရှိသည့် လျှို့ဝှက်ချက်တစ်ခုကို
+      ရှာဖွေခိုင်းလိုက်ပါက သူတို့ ကတ်တစ်ကတ် ဆုံးရှုံးပြီး သင် ဩဇာတစ်ခု
+      ကျသင့်မည်။</p>
+
+    <h3>ဒီးလ်များ</h3>
+    <p>အဆိုတင်သွင်းချက် တစ်ခုတွင် ကတ်များ လွှဲပေးခြင်း၊ ဩဇာ ကတိပေးခြင်း၊ ဩဇာ
+      တောင်းဆိုခြင်း၊ (သို့) သုံးခုစလုံး တစ်ချိန်တည်း ပါဝင်နိုင်သည် —
+      ရောင်းဝယ်ဖလှယ်ခြင်းနှင့် ခြိမ်းခြောက်ခြင်း ကွာခြားချက်မှာ ဘယ်အကွက်ကို
+      ဖြည့်ထားလဲ ဆိုတာသာ ဖြစ်သည်။ အဆိုများသည် အပတ်တစ်ပတ် ကုန်ဆုံးချိန်တွင်
+      သက်တမ်းကုန်သွားမည်။</p>
+
+    <h3>လျှို့ဝှက်ချက်များနှင့် ၎င်းတို့ကို ဖြေရှင်းသည့် ကတ်များ</h3>
+  </section>
+
+  <div id="sh-rules-cards" class="sh-rules-cards"></div>
+  </div>
+</aside>
+
+<style>
+  /* Scoped to this game because the markup above is unmounted with it. Nothing
+     in here names a hue: the palette block in style.css owns the colours, and
+     these rules only lay things out.
+
+     This game deals no card backs and no art. A Power card is a slip of paper
+     with a name and the secret it answers, so the cards are sized for reading
+     rather than for looking at, and the shared --card-w (which is cut for a 3:4
+     photographic scan) is deliberately not used. */
+
+  .sh-board {
+    flex: 1; min-height: 0;
+    display: grid; gap: 10px; padding: 10px 14px;
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  }
+  @media (min-width: 820px) {
+    .sh-board { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  }
+
+  .sh-panel {
+    min-width: 0; padding: 10px 12px; border-radius: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 46vh; overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .sh-panel-head {
+    margin: 0; font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .sh-note { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: none; }
+
+  /* Your own half of the world: a heading, a row of facts, and your secret. */
+  .sh-role { margin: 0; font-size: 18px; font-weight: 800; }
+  .sh-skill-blurb { margin: 0; font-size: 12px; color: var(--muted); }
+  .sh-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sh-fact {
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
+  }
+  .sh-fact.hot { border-color: var(--danger); color: var(--danger); }
+  .sh-fact.own { border-color: var(--accent); color: var(--accent); }
+
+  /* A card: a slip of paper with a name, what it answers, and a line of flavour.
+     Used for your secret, your hand, a Pawn's hand and the rules panel, so it
+     has to read at every one of those sizes. */
+  .sh-card {
+    text-align: left; font: inherit; width: 100%;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg-soft); color: var(--ink);
+    padding: 8px 10px; display: grid; gap: 2px;
+  }
+  .sh-card-name { font-weight: 700; font-size: 14px; }
+  .sh-card-sub { font-size: 11px; color: var(--muted); }
+  .sh-card-blurb { font-size: 11px; font-style: italic; color: var(--muted); }
+  .sh-card.wild { border-color: var(--accent); }
+  .sh-card.secret { border-style: dashed; }
+
+  /* The hand. Buttons, because a Power card is played by tapping it. */
+  #hand { min-height: 0; padding: 12px 14px 6px; align-items: stretch; }
+  #hand .sh-card { width: clamp(150px, 44vw, 210px); flex: 0 0 auto; cursor: pointer; }
+  #hand .sh-card:hover, #hand .sh-card:focus-visible {
+    border-color: var(--accent); outline: none;
+    box-shadow: 0 0 0 2px var(--accent), 0 8px 18px rgb(var(--shadow-rgb) / .28);
+  }
+  #hand .sh-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  #hand .sh-card.dim { opacity: .5; }
+  #hand .sh-empty { color: var(--muted); font-size: 13px; padding: 6px 0; }
+
+  /* The feed and the dossier are both lists of short prose. */
+  .sh-feed, .sh-dossier { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+  .sh-feed li {
+    font-size: 13px; border-left: 2px solid var(--line); padding: 2px 0 2px 8px;
+  }
+  .sh-feed li .sh-meta, .sh-dossier li .sh-meta {
+    display: block; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted);
+  }
+  .sh-dossier li { font-size: 13px; }
+  .sh-empty { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  /* Seat badges. The seat itself is the shell's; these are what this game adds
+     to it: what you know, and whether they are yours. */
+  .sh-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .sh-badge {
+    font-size: 10px; font-weight: 800; letter-spacing: .04em;
+    border-radius: 6px; padding: 1px 5px;
+    border: 1px solid var(--line); color: var(--muted);
+  }
+  .sh-badge.known { border-color: var(--accent); color: var(--accent); }
+  .sh-badge.pawn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .sh-badge.stale { border-style: dashed; }
+  .sh-badge.done { opacity: .6; }
+  .seat.selectable:hover { box-shadow: 0 0 0 2px var(--accent) inset; }
+
+  /* Open proposals: a strip of small paper slabs above the hand. */
+  .sh-offers {
+    display: flex; gap: 8px; padding: 8px 14px; overflow-x: auto;
+    border-top: 1px solid var(--line); background: var(--bg-soft);
+    scrollbar-width: thin;
+  }
+  .sh-offer {
+    flex: 0 0 auto; max-width: 300px;
+    background: var(--panel); color: var(--surface-ink);
+    --ink: var(--surface-ink); --muted: var(--muted-ink); --line: var(--surface-line);
+    border: 1px solid var(--surface-line); border-radius: 10px; padding: 8px 10px;
+    display: grid; gap: 6px; font-size: 13px;
+  }
+  .sh-offer-head { font-weight: 700; font-size: 12px; }
+  .sh-offer-note { font-style: italic; }
+  .sh-offer-terms { margin: 0; font-size: 12px; }
+  .sh-offer-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .sh-actions { flex-wrap: wrap; row-gap: 6px; }
+  .sh-row-label {
+    font-size: 10px; font-weight: 800; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); min-width: 72px;
+  }
+
+  /* Composers live in the shared modal's extra slot, which is a plain column. */
+  .sh-form { display: grid; gap: 8px; text-align: left; }
+  .sh-form label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .sh-form input[type="text"], .sh-form textarea, .sh-form select {
+    width: 100%; font: inherit; font-size: 14px; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg-soft); color: var(--ink);
+  }
+  .sh-form textarea { resize: vertical; min-height: 64px; }
+  .sh-form .sh-inline { display: flex; gap: 8px; align-items: center; }
+  .sh-form .sh-inline input[type="number"] {
+    width: 76px; font: inherit; padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg-soft); color: var(--ink);
+  }
+  .sh-check {
+    display: flex; gap: 8px; align-items: flex-start; font-size: 13px;
+    font-weight: 400; color: var(--ink); padding: 4px 0;
+  }
+  .sh-pick { display: grid; gap: 6px; max-height: 30vh; overflow-y: auto; }
+
+  /* The rules panel's table of what answers what. */
+  .sh-rules-cards { display: grid; gap: 6px; }
+  .sh-rules-row {
+    display: flex; justify-content: space-between; gap: 10px;
+    font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 4px;
+  }
+  .sh-rules-row b { font-weight: 700; }
+  .sh-rules-row span { color: var(--muted); text-align: right; }
+</style>

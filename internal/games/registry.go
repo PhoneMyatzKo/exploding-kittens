@@ -6,6 +6,7 @@ import (
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/kittens"
+	"boardgame/kittens/internal/games/shadows"
 	"boardgame/kittens/internal/games/uno"
 )
 
@@ -25,6 +26,8 @@ func New(slug string, rng *rand.Rand) (core.Game, error) {
 		return kittens.New(rng, v), nil
 	case UNO:
 		return uno.New(rng), nil
+	case Shadows:
+		return shadows.New(rng), nil
 	}
 	return nil, fmt.Errorf("no rules for game %q", slug)
 }
