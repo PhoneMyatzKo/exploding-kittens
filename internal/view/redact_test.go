@@ -83,6 +83,25 @@ func leakScan(t *testing.T, variant game.Variant) {
 					}
 				}
 
+				// The one card of the deck order anybody may be told about, and
+				// only while it is face up on top. Checked here rather than only in
+				// a focused test because this walk reaches states no hand-built one
+				// would — the kitten buried, resurfacing, drawn again.
+				if v.DeckTop != nil {
+					top := s.TopFaceUp()
+					if top == nil {
+						t.Fatalf("seed %d step %d: the view names a deck top that is not face up\n%s",
+							seed, step, blob)
+					}
+					if v.DeckTop.Slug != top.Slug {
+						t.Fatalf("seed %d step %d: the view names %q on top, the deck has %q",
+							seed, step, v.DeckTop.Slug, top.Slug)
+					}
+				} else if top := s.TopFaceUp(); top != nil {
+					t.Fatalf("seed %d step %d: %q is face up on top and the view hides it",
+						seed, step, top.Slug)
+				}
+
 				for _, match := range cardIDRe.FindAllStringSubmatch(string(blob), -1) {
 					id, _ := strconv.Atoi(match[1])
 					if !allowed[id] {
@@ -100,6 +119,65 @@ func leakScan(t *testing.T, variant game.Variant) {
 	if variant == game.Imploding && !sawAlter {
 		t.Error("the scan never reached Alter the Future, so it did not test it")
 	}
+}
+
+// The armed Imploding Kitten is disclosed only while it is the top card. Buried,
+// the table is told it is armed and nothing more — knowing which card is second
+// from the top would be a bigger edge than any card in the game gives.
+func TestArmedKittenIsNamedOnlyOnTop(t *testing.T) {
+	gs, ms := seats(3)
+	s, err := game.NewGame(gs, game.Imploding, rand.New(rand.NewSource(11)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	at := -1
+	for i, c := range s.Draw {
+		if c.Type == game.ImplodingKitten {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatal("the expansion deck was dealt without its Imploding Kitten")
+	}
+	s.Draw[at].FaceUp = true
+
+	// Buried: second from the top, which is where it is most tempting to leak.
+	s.Draw[0], s.Draw[at] = s.Draw[at], s.Draw[0]
+	s.Draw[0], s.Draw[1] = s.Draw[1], s.Draw[0]
+
+	v := For("ABCD", ms, s, "p1", Countdown{}, nil)
+	if !v.ImplodingArmed {
+		t.Error("a face-up kitten in the deck is not reported as armed")
+	}
+	if v.DeckTop != nil {
+		t.Errorf("a buried kitten is named on the deck as %q", v.DeckTop.Slug)
+	}
+
+	// Surfaced.
+	s.Draw[0], s.Draw[1] = s.Draw[1], s.Draw[0]
+
+	v = For("ABCD", ms, s, "p1", Countdown{}, nil)
+	if v.DeckTop == nil {
+		t.Fatal("the kitten is face up on top and the deck says nothing")
+	}
+	if v.DeckTop.Slug != "imploding" {
+		t.Errorf("the deck top is %q, want the imploding kitten", v.DeckTop.Slug)
+	}
+	// No ID, or the scan above would have something to catch.
+	if strings.Contains(mustJSON(t, v.DeckTop), `"id"`) {
+		t.Error("the deck top carries a card ID")
+	}
+}
+
+func mustJSON(t *testing.T, x any) string {
+	t.Helper()
+	b, err := json.Marshal(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 func TestLobbyViewHasNoCards(t *testing.T) {

@@ -41,6 +41,24 @@ const GLYPHS = {
 const artURL = (card) =>
   card.art ? `/cards/${card.art.split("/").map(encodeURIComponent).join("/")}` : "";
 
+// A card lying face up on the deck gets a picture of its own. The printed scan
+// is what the Imploding Kitten looks like in a hand; this is what it looks like
+// sitting on the pile with the whole table watching it. Keyed by slug rather
+// than hardcoded, because "face up in the deck" is a property of the card.
+const FACE_UP_ART = { imploding: "/cards/imploding_kitten_faceup.gif" };
+const faceUpArtURL = (card) => FACE_UP_ART[card.slug] || artURL(card);
+
+// Warmed once per page, off the browser cache thereafter. Kept out of mount/
+// unmount state on purpose: the cache outlives the module, so a second game in
+// the same tab should not fetch it again.
+const prefetched = new Set();
+function prefetchFaceUp(slug) {
+  const src = FACE_UP_ART[slug];
+  if (!src || prefetched.has(src)) return;
+  prefetched.add(src);
+  new Image().src = src;
+}
+
 // The game-over payoff. The title music belongs to the hub and is the shell's.
 const TRACKS = {
   theme: { src: "/audio/theme_song1.mp3", volume: 0.6, loop: false },
@@ -315,6 +333,7 @@ function renderTable(v) {
 // The odds of the next draw being a Kitten — arithmetic on two public numbers.
 function renderDeck(v) {
   $("deck-count").textContent = `${v.deckCount} left`;
+  renderDeckFace(v);
 
   const kittens = v.kittensLeft || 0;
   const pct = v.deckCount > 0 ? Math.round((kittens / v.deckCount) * 100) : 0;
@@ -323,12 +342,52 @@ function renderDeck(v) {
   // card in the deck a Defuse cannot answer, so the plain percentage understates
   // what is at stake.
   const glyph = v.implodingArmed ? "🌀" : "💥";
-  risk.textContent = v.phase === "game_over" ? "" : `${glyph} ${pct}%`;
-  risk.title = v.implodingArmed
+  // Once the kitten is actually on top there is nothing left to estimate — a
+  // percentage next to a picture of the card would read as a hedge.
+  risk.textContent =
+    v.phase === "game_over" ? ""
+    : v.deckTop ? `${glyph} next draw`
+    : `${glyph} ${pct}%`;
+  risk.title = v.deckTop
+    ? `${v.deckTop.name} is face up on top — whoever draws is out, and no Defuse stops it`
+    : v.implodingArmed
     ? `${kittens} kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards — one of them is the armed Imploding Kitten, and no Defuse stops it`
     : `${kittens} Exploding Kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards`;
   risk.classList.toggle("hot", pct >= 25 || Boolean(v.implodingArmed));
   risk.classList.toggle("armed", Boolean(v.implodingArmed));
+}
+
+// The face-up card on top of the deck, when there is one. Only the armed
+// Imploding Kitten is ever face up, and the server sends it only while it is
+// actually on top — so the picture appearing means the very next draw is fatal,
+// not merely that the kitten is somewhere in the pile. Everyone sees the same
+// thing at the same time, which is the point of putting it back face up.
+function renderDeckFace(v) {
+  const img = $("deck-face");
+  const deck = $("deck");
+  const top = v.deckTop;
+
+  if (!top) {
+    // Armed but still buried: fetch the animation now, while nobody is waiting
+    // for it. It is a few megabytes, and the moment it surfaces is the worst
+    // possible time to be staring at a half-loaded card.
+    if (v.implodingArmed) prefetchFaceUp("imploding");
+    img.hidden = true;
+    img.removeAttribute("src"); // stops the gif animating behind a hidden element
+    img.alt = "";
+    deck.classList.remove("face-up");
+    deck.removeAttribute("aria-label");
+    return;
+  }
+
+  const src = faceUpArtURL(top);
+  // Guarded: reassigning the same src restarts the animation on every state, and
+  // states arrive on every play anybody makes.
+  if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+  img.alt = top.name;
+  img.hidden = false;
+  deck.classList.add("face-up");
+  deck.setAttribute("aria-label", `Draw — the ${top.name} is face up on top`);
 }
 
 function renderTurnBanner(v) {

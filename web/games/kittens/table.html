@@ -22,6 +22,9 @@
     <div class="center">
       <div class="deck-stack">
         <button id="deck" class="deck" type="button">
+          <!-- The top card, shown only when the server says it is lying face up.
+               Empty alt while hidden; renderDeck names the card when it appears. -->
+          <img id="deck-face" class="deck-face" alt="" hidden>
           <span class="deck-strip">
             <span class="deck-label">Draw</span>
             <span id="deck-count" class="deck-count"></span>
