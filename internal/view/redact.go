@@ -114,6 +114,12 @@ type View struct {
 	// ImplodingArmed says the Imploding Kitten is back in the deck face up and
 	// will take whoever reaches it. Public: everybody watched it go in.
 	ImplodingArmed bool `json:"implodingArmed,omitempty"`
+	// DeckTop is the top of the deck when that card is lying face up, which only
+	// the armed Imploding Kitten ever is. Absent otherwise, and it must stay that
+	// way: this is the one card of the deck order anybody may be told about, and
+	// only because a face-up card on top of a face-down pile is visible at a real
+	// table. A FaceCard rather than a game.Card so it carries no ID — see below.
+	DeckTop *FaceCard `json:"deckTop,omitempty"`
 	// Placing is the slug of the kitten being put back during the defuse phase,
 	// so the prompt can tell hiding one apart from arming one.
 	Placing string `json:"placing,omitempty"`
@@ -162,6 +168,9 @@ func For(code string, members []Membership, s *game.State, viewerID string, cd C
 		ImplodingArmed: s.ImplodingArmed(),
 		Placing:        s.Placing(),
 		Log:            log,
+	}
+	if top := s.TopFaceUp(); top != nil {
+		v.DeckTop = &FaceCard{Name: top.Name, Slug: top.Slug, Art: top.Art}
 	}
 	if log == nil {
 		v.Log = []Entry{}

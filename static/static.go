@@ -28,14 +28,21 @@ import (
 // the build fails, which makes a renamed directory a compile error rather than a
 // deck of cards quietly wearing emoji.
 //
-// Only background.jpeg, the card back, is served from the top level — hence the
-// narrower .jpeg pattern beside the per-card .jpg ones.
+// Three files are served from the top level rather than from a card's own
+// directory, and each is named individually so the rest of that folder — working
+// scans, cards this engine does not implement — stays out of the binary:
+// background.jpeg is the card back; Imploding_Kitten.jpg is the expansion's tile
+// on the menu, which wants the whole box art rather than the card face used in
+// the deck; and imploding_kitten_faceup.gif is the armed kitten sitting on top
+// of the deck, the only animation in the card set and the only .gif here.
 //
 // A game's own artwork — UNO's stage art and card back — sits beside its rules
 // rather than in the shared pile, and is served whole rather than catalogued:
 // unlike the card scans, nothing samples it, so there is nothing to index.
 //
 //go:embed src/games/kittens/images/background.jpeg
+//go:embed src/games/kittens/images/Imploding_Kitten.jpg
+//go:embed src/games/kittens/images/imploding_kitten_faceup.gif
 //go:embed src/games/kittens/images/explode/*.jpg
 //go:embed src/games/kittens/images/defuse/*.jpg
 //go:embed src/games/kittens/images/nope/*.jpg

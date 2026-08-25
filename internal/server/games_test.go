@@ -76,6 +76,33 @@ func TestEveryPlayableGameHasRules(t *testing.T) {
 	}
 }
 
+// A tile's box art is a URL written by hand in the catalogue, so nothing else
+// checks it. Fetched over HTTP rather than opened from the embed FS on purpose:
+// the failure being guarded against is the route and the path disagreeing, and
+// only a request exercises both.
+func TestEveryCatalogueCoverIsServed(t *testing.T) {
+	base, _ := newTestServer(t)
+
+	covered := 0
+	for _, g := range games.All() {
+		if g.Cover == "" {
+			continue // a game with no art gets the house gradient, which is fine
+		}
+		covered++
+		resp, err := http.Get(base + g.Cover)
+		if err != nil {
+			t.Fatalf("%s: GET %s: %v", g.Slug, g.Cover, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: cover %s is not served (status %d)", g.Slug, g.Cover, resp.StatusCode)
+		}
+	}
+	if covered == 0 {
+		t.Error("no game in the catalogue has box art, so this checked nothing")
+	}
+}
+
 // A client that predates the menu sends no game at all. It has to keep working,
 // which is the whole reason the field defaults rather than being required.
 func TestRoomsDefaultToKittens(t *testing.T) {

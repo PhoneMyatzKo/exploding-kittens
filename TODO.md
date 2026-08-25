@@ -2,6 +2,21 @@
 
 ## Done
 
+- ~~Show the armed Imploding Kitten on the deck, and give the expansion its box
+  art~~ — the deck now renders the card itself, as an animation, but **only while
+  the kitten is genuinely the top card**. That is a new disclosure and a
+  deliberate one: a face-up card on top of a face-down pile is visible at a real
+  table, so it is information the room already has. Buried, the table is told the
+  kitten is armed and nothing more — knowing it is second from the top would be a
+  bigger edge than any card in the game gives. It travels as a `FaceCard`, the
+  same no-ID shape Alter the Future uses, so the leak scan needed no loosening;
+  the scan instead gained an assertion in both directions, that the view names
+  the top card exactly when it is face up. The risk readout drops the percentage
+  for "next draw" once it surfaces, since a hedge next to a picture of the card
+  reads as uncertainty there is none of. The gif is a few megabytes, so it is
+  prefetched the moment the kitten arms rather than at the reveal. The menu tile
+  moved from the card face to the printed box art.
+
 - ~~Repair what the UNO merge dropped~~ — the `games/UNO` merge brought the
   multi-game core in and took Alter the Future out with it, which **deadlocked
   every expansion game**: the wire case was lost when `toAction` moved from

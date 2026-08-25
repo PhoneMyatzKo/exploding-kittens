@@ -66,6 +66,22 @@ func (s *State) ImplodingArmed() bool {
 	return s.PendingKitten != nil && s.PendingKitten.Type == ImplodingKitten
 }
 
+// TopFaceUp is the top card of the deck when it is lying face up, and nil when
+// it is face down — which is every card but one.
+//
+// Only the Imploding Kitten is ever face up in the deck, and it got there by
+// being put back in front of everybody. A face-up card on top of a face-down
+// pile is visible at a real table, so naming it here discloses nothing the room
+// does not already see. The card below it stays secret, and so does the kitten's
+// position for as long as something is stacked on top of it.
+func (s *State) TopFaceUp() *Card {
+	if len(s.Draw) == 0 || !s.Draw[0].FaceUp {
+		return nil
+	}
+	top := s.Draw[0]
+	return &top
+}
+
 // Placing names the kind of kitten awaiting reinsertion during PhaseDefuse, so
 // the client can say whether it is being hidden or armed. Empty otherwise.
 func (s *State) Placing() string {

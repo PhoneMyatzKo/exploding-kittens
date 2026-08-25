@@ -43,10 +43,18 @@ func TestCardArtVariantsResolveAgainstCardArt(t *testing.T) {
 	}
 }
 
-// The card back is loaded by the stylesheet rather than by any Go code, so the
-// narrowed embed pattern is the only thing keeping it in the binary.
-func TestCardBackIsServed(t *testing.T) {
-	if _, err := CardArt().Open("background.jpeg"); err != nil {
-		t.Fatalf("card back missing from the binary: %v", err)
+// The top-level files are named one at a time in the embed block and are asked
+// for by a stylesheet, a client module and the catalogue rather than by anything
+// this package indexes — so nothing else here would notice them going missing.
+// A renamed file becomes a 404 at runtime, which looks like a styling bug.
+func TestTopLevelAssetsAreServed(t *testing.T) {
+	for _, name := range []string{
+		"background.jpeg",             // the card back, loaded by style.css
+		"Imploding_Kitten.jpg",        // the expansion's menu tile
+		"imploding_kitten_faceup.gif", // the armed kitten on top of the deck
+	} {
+		if _, err := CardArt().Open(name); err != nil {
+			t.Errorf("%s is missing from the binary: %v", name, err)
+		}
 	}
 }

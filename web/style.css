@@ -534,6 +534,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .deck:not(:disabled):hover { transform: translateY(-4px); }
 /* Tight stops so the scrim sits under the wordmark rather than over it. */
 .deck-strip {
+  /* Lifted above the face-up card, which is absolutely positioned — the same
+     bargain .card.has-art .label makes with its scan. */
+  position: relative;
   display: grid; gap: 1px; padding: 14px 4px 5px;
   background: linear-gradient(to top, rgb(var(--scrim-rgb) / .9) 26%, rgb(var(--scrim-rgb) / .55) 60%, transparent);
 }
@@ -553,6 +556,21 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   color: var(--muted); letter-spacing: .02em;
 }
 .deck-risk.hot { color: var(--warn); }
+
+/* The top card lying face up — the armed Imploding Kitten, and nothing else.
+   It covers the card back entirely, so the deck stops reading as "unknown" the
+   moment the kitten surfaces. The strip keeps its own scrim and stays legible on
+   top of the picture, which is why it is painted after this in the markup. */
+.deck-face {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--radius) - 2px);
+}
+.deck.face-up {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / .45);
+}
 
 /* ───────────────────────────── cards ───────────────────────────── */
 
