@@ -4,23 +4,24 @@ import (
 	"strings"
 	"testing"
 
-	"boardgame/kittens/internal/game"
+	"boardgame/kittens/internal/games/kittens/game"
 )
 
 // Every card the engine deals must have somewhere to get a face from. Without
 // this, renaming a directory costs those cards their art silently — the client
 // falls back to a glyph and the game plays on, so nothing else would complain.
+// Both decks, because the expansion brings six card types and six directories of
+// its own — checking only the Original Edition would leave exactly the new art
+// unguarded.
 func TestCardArtVariantsCoverEveryDealtCard(t *testing.T) {
-	variants := CardArtVariants()
+	art := CardArtVariants()
 
-	slugs := []string{game.ExplodingKitten.Slug()}
-	for _, ct := range game.DemandableTypes() {
-		slugs = append(slugs, ct.Slug())
-	}
-
-	for _, slug := range slugs {
-		if len(variants[slug]) == 0 {
-			t.Errorf("no card art for %q: check cardArtDirs/cardArtFiles against src/images", slug)
+	for _, v := range []game.Variant{game.Original, game.Imploding} {
+		for _, ct := range game.AllTypes(v) {
+			if len(art[ct.Slug()]) == 0 {
+				t.Errorf("%s deck: no card art for %q: check cardArtDirs/cardArtFiles against src/games/kittens/images",
+					v, ct.Slug())
+			}
 		}
 	}
 }

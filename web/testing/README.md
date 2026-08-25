@@ -61,6 +61,7 @@ Screenshots land in `shots/` (gitignored).
 | `rules.js` | The how-to-play sheet, per deck: it lists exactly the cards this deck contains, shows them as *loaded* card pictures rather than emoji, reads in Burmese with the art intact, and remembers the language |
 | `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
+| `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never

@@ -124,11 +124,9 @@ func New(mgr *room.Manager) http.Handler {
 			})
 			return
 		}
-		// Playable implies known, so this cannot fail — but resolving it here keeps
-		// the slug-to-deck mapping out of the room entirely.
-		variant, _ := games.VariantFor(slug)
-
-		rm := mgr.Create(room.Options{Public: public, Game: slug, Variant: variant})
+		// The slug is all the room is given: games.New turns it into rules, and the
+		// slug-to-deck mapping stays in the catalogue where the menu reads it.
+		rm := mgr.Create(room.Options{Public: public, Game: slug})
 		visibility := "private"
 		if public {
 			visibility = "public"
