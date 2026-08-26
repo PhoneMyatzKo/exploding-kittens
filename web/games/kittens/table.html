@@ -13,6 +13,9 @@
     <span id="turn-banner" class="turn-banner"></span>
     <span id="sound-table"></span>
     <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
+    <button id="leave-table" class="btn ghost small" aria-label="Leave the game" title="Leave the game">
+      <i class="fa-solid fa-right-from-bracket"></i>
+    </button>
   </header>
 
   <div id="seats" class="seats"></div>
@@ -30,6 +33,16 @@
             <span id="deck-count" class="deck-count"></span>
           </span>
         </button>
+      </div>
+      <!-- A fixed red-to-green danger scale rather than a bar that fills: the
+           colour at a given height never changes, only where the pointer sits
+           on it, so "it's up in the red" means the same thing on turn one and
+           turn twenty. Beside the deck rather than under it, since that is the
+           card the pointer is actually about. -->
+      <div id="risk-meter" class="risk-meter">
+        <div class="risk-track" aria-hidden="true">
+          <span id="risk-pointer" class="risk-pointer"></span>
+        </div>
         <p id="deck-risk" class="deck-risk"></p>
       </div>
       <div id="discard" class="discard"></div>

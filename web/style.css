@@ -182,7 +182,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.45 "Outfit", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overscroll-behavior: none;
 }
 
@@ -237,6 +237,9 @@ body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-are
 }
 
 .logo { margin: 0; font-size: 34px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); }
+/* The home screen's own title wears the game's one script face; every other
+   heading (the menu, the rules panel, a modal) reads in the serif instead. */
+#home-logo { font-family: "Macondo", cursive; }
 .tagline { margin: 0; color: var(--muted); font-size: 14px; }
 .muted { color: var(--muted); font-size: 14px; margin: 0; }
 /* Gold cannot carry text on paper (1.7:1), so errors lean on weight instead. */
@@ -312,6 +315,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 /* balance keeps the subtitle from dropping a single word onto its own line on a
    phone; browsers without it just wrap normally. */
 .menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--paper); text-wrap: balance; }
+/* Every other heading in the app — the menu title, the rules panel's, a
+   modal's — takes the serif face, distinct from the Outfit body copy under it. */
+.menu-title, h2, h3 { font-family: "PT Serif", serif; }
 .menu-sub { margin: 0; font-size: 14px; color: rgba(253,254,255,.82); text-wrap: balance; }
 .menu-status { margin: 0; font-size: 14px; color: var(--paper); font-weight: 600; }
 
@@ -550,10 +556,39 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 
 .deck-stack { display: grid; gap: 8px; justify-items: center; }
+
+/* Upright, beside the deck rather than a strip under it — the deck is the
+   thing it is measuring, so it reads as that card's own gauge rather than a
+   caption underneath a different element. */
+.risk-meter { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+/* Fixed danger colours rather than tokens: a risk of drawing a Kitten reads
+   the same red-through-green on every table, so this is one of the few
+   places allowed to name colours instead of a semantic one. Bottom is safe
+   and top is dangerous, the way a thermometer or a fuel gauge reads. */
+.risk-track {
+  position: relative;
+  width: 8px; height: clamp(72px, 16vh, 112px); border-radius: 999px;
+  background: linear-gradient(to top, #2e9e4f 0%, #8bd450 34%, #f5a623 67%, #e0393e 100%);
+  border: 1px solid rgb(var(--shadow-rgb) / .35);
+}
+/* The pointer is what moves; the track under it never does. Bottom is set
+   from JS as the live percentage, so this is the one rule with no fixed
+   value. */
+.risk-pointer {
+  position: absolute; left: 50%; bottom: 0;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--ink);
+  transform: translate(-50%, 50%);
+  transition: bottom .25s ease;
+  box-shadow: 0 1px 3px rgb(var(--shadow-rgb) / .5);
+}
+
 /* Gold only once the odds are worth flinching at. */
 .deck-risk {
   margin: 0; font-size: 13px; font-weight: 700;
   color: var(--muted); letter-spacing: .02em;
+  max-width: 64px; text-align: center;
 }
 .deck-risk.hot { color: var(--warn); }
 
@@ -658,9 +693,20 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   transition: padding-bottom .15s ease;
 }
 .hand {
-  display: flex; gap: 7px; padding: 18px 14px 6px;
-  overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  /* Smaller than the table's own --card-w: a hand of eight-plus wraps onto a
+     couple of rows instead of scrolling sideways, and wrapping only reads well
+     once a whole row of cards fits a phone screen. --card-h is redeclared here
+     too, off this smaller --card-w, because it is used directly for a card's
+     height in UNO rather than through aspect-ratio. */
+  --card-w: clamp(64px, 17vw, 108px);
+  --card-h: calc(var(--card-w) * 4 / 3);
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding: 18px 14px 6px;
   align-items: flex-end; min-height: calc(var(--card-h) + 24px);
+  /* Room for two rows before it scrolls, rather than letting a big hand push the
+     deck and log off the top of the screen. */
+  max-height: calc(var(--card-h) * 2 + 40px);
+  overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
 }
 .actions { display: flex; align-items: center; gap: 12px; padding: 4px 14px 0; }
 .hint { color: var(--muted); font-size: 13px; }
@@ -772,11 +818,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 
 /* The armed Imploding Kitten is the one hazard a Defuse cannot answer, so the
-   odds readout pulses rather than just changing colour. */
-.deck-risk.armed { animation: armed 1.6s ease-in-out infinite; }
+   odds readout — and the pointer sitting at the red end of the scale — pulse
+   rather than just changing colour. */
+.deck-risk.armed, .risk-pointer.armed { animation: armed 1.6s ease-in-out infinite; }
 @keyframes armed { 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) {
-  .deck-risk.armed { animation: none; }
+  .deck-risk.armed, .risk-pointer.armed { animation: none; }
 }
 
 /* ───────────────────────────── rules ───────────────────────────── */
@@ -1022,7 +1069,6 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 @media (min-width: 720px) {
   .seats { justify-content: center; }
-  .hand { justify-content: center; }
   .actions { justify-content: center; }
 
   /* Enough room to sit the log alongside the table instead of under it, where

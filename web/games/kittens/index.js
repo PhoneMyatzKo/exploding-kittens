@@ -11,6 +11,7 @@
 // and re-renders whatever comes back.
 
 import { $ } from "../../core/dom.js";
+import { groupByCategory } from "../../core/sort.js";
 import { logOpen, setStoredLogOpen } from "../../core/store.js";
 import { register as registerSound, setTrack, playSfx } from "../../core/sound.js";
 import { openModal, closeModal, modalKind } from "../../core/modal.js";
@@ -343,7 +344,8 @@ function renderDeck(v) {
   // what is at stake.
   const glyph = v.implodingArmed ? "🌀" : "💥";
   // Once the kitten is actually on top there is nothing left to estimate — a
-  // percentage next to a picture of the card would read as a hedge.
+  // percentage next to a picture of the card would read as a hedge. The
+  // pointer still goes all the way to the red end: the next draw is certain.
   risk.textContent =
     v.phase === "game_over" ? ""
     : v.deckTop ? `${glyph} next draw`
@@ -355,6 +357,11 @@ function renderDeck(v) {
     : `${kittens} Exploding Kitten${kittens === 1 ? "" : "s"} in ${v.deckCount} cards`;
   risk.classList.toggle("hot", pct >= 25 || Boolean(v.implodingArmed));
   risk.classList.toggle("armed", Boolean(v.implodingArmed));
+
+  $("risk-meter").hidden = v.phase === "game_over";
+  const pointer = $("risk-pointer");
+  pointer.style.bottom = `${v.deckTop ? 100 : pct}%`;
+  pointer.classList.toggle("armed", Boolean(v.implodingArmed));
 }
 
 // The face-up card on top of the deck, when there is one. Only the armed
@@ -442,8 +449,11 @@ function renderHand(v) {
   for (const id of [...me.peeked]) if (!held.has(id)) me.peeked.delete(id);
 
   const sel = selectedCards(v);
+  // Grouped by slug so, say, all three Cat Tacos sit together rather than
+  // wherever they happened to be drawn — the whole point of a hand of cards.
+  const hand = groupByCategory(v.me.hand, (c) => c.slug);
 
-  $("hand").replaceChildren(...v.me.hand.map((c) => {
+  $("hand").replaceChildren(...hand.map((c) => {
     // While the hand is covered, the first tap turns a card over and the next
     // one picks it, so a glance over your shoulder gets nothing.
     if (me.coverHand && !me.peeked.has(c.id)) {
