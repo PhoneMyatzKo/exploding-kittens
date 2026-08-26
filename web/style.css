@@ -164,7 +164,6 @@
 .log-panel,
 .rules-panel,
 .toast,
-.nope-bar,
 .game-tile,
 .card {
   --bg-soft: var(--surface-soft);
@@ -517,9 +516,29 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .seat-name { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .seat-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
 
+/* The middle of the table. Everything in here is sized off the height it is
+   actually given, not off --card-w alone: this row is what gets squeezed when the
+   hand grows, and a fixed-height card in a shrinking box does not clip, it
+   overflows — sliding under the handbar, which has a background and is painted
+   after it. That is the "cards overlapping near the border" report, and it needs
+   a laptop-shaped window rather than a phone to show up, because --card-w is at
+   its *maximum* on a wide screen while the height is not.
+
+   A grid of one row rather than a flex row, and that is the load-bearing detail:
+   the cards below size themselves with min(--card-h, 100%), and a percentage
+   height only resolves against a containing block that has a definite one. A
+   flex item's height is decided *by* the layout, so the percentage there resolves
+   to auto — the deck then fell back to its aspect ratio off its own text width
+   and rendered 48px wide. `minmax(0, 1fr)` of a definite-height grid is a
+   definite row, so the percentage has something real to measure.
+
+   overflow: hidden is the backstop: if some future child still refuses to shrink,
+   it gets cut off inside the table rather than painted over the hand. */
 .center {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  gap: clamp(16px, 6vw, 48px); padding: 8px 14px; min-height: 0;
+  flex: 1; min-height: 0; overflow: hidden;
+  display: grid; grid-auto-flow: column; grid-template-rows: minmax(0, 1fr);
+  align-items: center; justify-content: center;
+  gap: clamp(16px, 6vw, 48px); padding: 8px 14px;
 }
 
 /* Face-down back: the box art, cropped to the card ratio. The label rides on a
@@ -527,7 +546,10 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    card faces use. */
 .deck {
   position: relative; overflow: hidden;
-  width: var(--card-w); aspect-ratio: 3 / 4;
+  /* Height-led, width derived from the ratio — see the note on .center. On a tall
+     window this is exactly --card-w wide, as it always was; on a short one it
+     gives up size instead of sliding under the hand. */
+  height: min(var(--card-h), 100%); width: auto; aspect-ratio: 3 / 4;
   border-radius: var(--radius); cursor: pointer;
   color: var(--surface); font: inherit; padding: 0;
   background: var(--card-back) center / cover, var(--brand);
@@ -550,17 +572,31 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .deck-count { font-size: 11px; color: rgb(var(--surface-rgb) / .78); } /* surface 78% on the scrim */
 
 .discard {
-  width: var(--card-w); aspect-ratio: 3 / 4;
+  align-self: center;
+  height: min(var(--card-h), 100%); width: auto; aspect-ratio: 3 / 4;
   border-radius: var(--radius); border: 2px dashed var(--line);
   display: grid; place-items: center;
 }
+/* The card sitting in the slot follows the slot rather than --card-w, or the
+   discard stays full size while everything around it shrinks. */
+.discard > .card { width: auto; height: 100%; }
 
-.deck-stack { display: grid; gap: 8px; justify-items: center; }
+/* One definite row, for the same reason .center is one: `align-content: center`
+   would size the row to its content, and the deck inside measures itself against
+   this box. Centring is the item's job (align-items) rather than the track's. */
+.deck-stack {
+  display: grid; gap: 8px; justify-items: center;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%; min-height: 0; align-items: center;
+}
 
 /* Upright, beside the deck rather than a strip under it — the deck is the
    thing it is measuring, so it reads as that card's own gauge rather than a
    caption underneath a different element. */
-.risk-meter { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.risk-meter {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  height: 100%; min-height: 0; justify-content: center;
+}
 
 /* Fixed danger colours rather than tokens: a risk of drawing a Kitten reads
    the same red-through-green on every table, so this is one of the few
@@ -568,7 +604,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    and top is dangerous, the way a thermometer or a fuel gauge reads. */
 .risk-track {
   position: relative;
-  width: 8px; height: clamp(72px, 16vh, 112px); border-radius: 999px;
+  /* Basis rather than height, so a squeezed table shortens the gauge instead of
+     pushing its own caption out of the box. */
+  width: 8px; flex: 0 1 clamp(72px, 16vh, 112px); min-height: 28px; border-radius: 999px;
   background: linear-gradient(to top, #2e9e4f 0%, #8bd450 34%, #f5a623 67%, #e0393e 100%);
   border: 1px solid rgb(var(--shadow-rgb) / .35);
 }
@@ -684,13 +722,13 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* ─────────────────────── hand & actions ─────────────────────── */
 
-/* --nope-h is set from JS to the live height of the Nope bar so the hand is
-   never hidden behind it while you are deciding whether to Nope. */
+/* min-height: 0 so this is the item that gives when the window is short — see
+   the note on .table-body. */
 .handbar {
   border-top: 1px solid var(--line);
   background: var(--bg-soft);
-  padding: 10px 0 calc(12px + var(--nope-h, 0px));
-  transition: padding-bottom .15s ease;
+  padding: 10px 0 12px;
+  min-height: 0; display: flex; flex-direction: column;
 }
 .hand {
   /* Smaller than the table's own --card-w: a hand of eight-plus wraps onto a
@@ -701,34 +739,78 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   --card-w: clamp(64px, 17vw, 108px);
   --card-h: calc(var(--card-w) * 4 / 3);
   display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; padding: 18px 14px 6px;
-  align-items: flex-end; min-height: calc(var(--card-h) + 24px);
+  /* flex: 1 1 auto with min-height 0 so a squeezed handbar shortens the hand
+     instead of overflowing it; one row is the floor before it scrolls. */
+  flex: 1 1 auto; min-height: 0;
+  align-items: flex-end;
   /* Room for two rows before it scrolls, rather than letting a big hand push the
-     deck and log off the top of the screen. */
-  max-height: calc(var(--card-h) * 2 + 40px);
+     deck and log off the top of the screen — and never more than a share of the
+     window, because two rows of the largest card is 328px, which is over half of
+     a short laptop window and leaves the table nothing. */
+  max-height: min(calc(var(--card-h) * 2 + 40px), 38dvh);
   overflow-y: auto; overflow-x: hidden;
   scrollbar-width: thin; scrollbar-color: var(--line) transparent;
 }
-.actions { display: flex; align-items: center; gap: 12px; padding: 4px 14px 0; }
+/* More cards below the fold. Same treatment as the prompt's card list: without
+   it the clipped row at the bottom edge reads as a rendering fault rather than
+   as something to scroll. */
+.hand.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
+.actions { display: flex; align-items: center; gap: 12px; padding: 4px 14px 0; flex: none; }
 .hint { color: var(--muted); font-size: 13px; }
 .hint.warn { color: var(--accent); font-weight: 600; }
 
-.target-row {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px 14px; background: var(--bg-soft); border-top: 1px solid var(--line);
+/* ─────────────────────── the target ring ───────────────────────
+   "Play on whom?" as a dial rather than a row of name buttons. Faces beat names
+   at a glance, and the ring puts every candidate the same distance from your
+   thumb instead of making the last player in the list the furthest to reach.
+
+   Positions come from JS as percentages — the count decides the angles, so this
+   only owns the geometry of one seat. */
+.target-ring {
+  position: relative;
+  width: min(320px, 74vmin); aspect-ratio: 1;
+  margin: 2px auto 0;
 }
-.target-label { font-size: 13px; color: var(--muted); }
-.target-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+/* One candidate has no ring to be on: it sits in the middle, and the box
+   shrinks to it rather than framing it with empty space. */
+.target-ring[data-count="1"] { width: auto; aspect-ratio: auto; }
+.target-ring[data-count="1"] .target-pick { position: static; transform: none; }
+
+.target-pick {
+  position: absolute; transform: translate(-50%, -50%);
+  display: grid; justify-items: center; gap: 5px;
+  background: none; border: 0; padding: 4px; cursor: pointer;
+  color: inherit; font: inherit;
+  width: 92px;
+}
+.target-pick .avatar-chip {
+  width: 62px; height: 62px; font-size: 30px;
+  box-shadow: 0 0 0 2px var(--surface-line), 0 4px 10px rgb(var(--shadow-rgb) / .3);
+  transition: box-shadow .12s ease, transform .12s ease;
+}
+.target-pick .target-name {
+  font-size: 12px; font-weight: 700; line-height: 1.2;
+  /* Long names wrap rather than widening the seat and colliding with the next
+     one around the ring. */
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.target-pick .target-cards { font-size: 11px; color: var(--muted-ink); }
+.target-pick:hover .avatar-chip,
+.target-pick:focus-visible .avatar-chip {
+  box-shadow: 0 0 0 3px var(--accent), 0 6px 14px rgb(var(--shadow-rgb) / .4);
+  transform: translateY(-2px);
+}
 
 /* ───────────────────────────── nope ───────────────────────────── */
 
-/* A paper slab, so it reads as an interruption against the crimson table. */
-.nope-bar {
-  position: fixed; inset: auto 0 0; z-index: 40;
-  background: var(--panel);
-  border-top: 3px solid var(--accent);
-  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-}
-.nope-inner { max-width: 560px; margin: 0 auto; display: grid; gap: 10px; text-align: center; }
+/* Inside the shared prompt, not along the bottom of the screen. It was a fixed
+   bar, and on a phone it landed on top of the hand and the action row — three
+   things stacked in the same 120 pixels, which is what the bug report showed.
+   Centred, it is also easier to answer inside the few seconds it is up for. */
+.nope-inner { display: grid; gap: 10px; text-align: center; }
 .nope-text { margin: 0; font-size: 15px; font-weight: 600; }
 .nope-timer { height: 5px; background: var(--line); border-radius: 999px; overflow: hidden; }
 /* Draining bar: decorative, so it can take the gradient unscrimmed. */
@@ -739,7 +821,16 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* Always on, like a chat window: a short strip beneath the table on a phone, a
    column beside it once there is width to spare. */
-.table-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* min-height is what decides who loses when the window is too short for
+   everything: without it the table shrinks until the deck is a postage stamp,
+   because it is the only flexible item and the hand's height is its content's.
+   With it, flexbox takes the space out of the handbar instead — and the hand
+   already scrolls, so the cost is a shorter hand rather than an unreadable
+   table. Capped in dvh as well so a very short window still shows some hand. */
+.table-body {
+  flex: 1; display: flex; flex-direction: column;
+  min-height: min(268px, 46dvh);
+}
 
 .log-panel {
   flex: none; height: 104px;
