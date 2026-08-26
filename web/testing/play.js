@@ -302,7 +302,7 @@ async function finishPlay(p, { needsTarget }) {
   await safeClick(p.$("#play-btn"));
 
   if (needsTarget) {
-    const targets = p.$("#target-buttons .btn");
+    const targets = p.$("#target-buttons .target-pick");
     await waitFor(async () => (await targets.count()) > 0, {
       timeout: 3000, what: "a target list",
     }).catch(() => {});

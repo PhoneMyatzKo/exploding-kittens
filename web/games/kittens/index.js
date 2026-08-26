@@ -10,7 +10,7 @@
 // beyond deciding which buttons to light up: it renders `view`, sends intents,
 // and re-renders whatever comes back.
 
-import { $ } from "../../core/dom.js";
+import { $, markScrollable } from "../../core/dom.js";
 import { groupByCategory } from "../../core/sort.js";
 import { logOpen, setStoredLogOpen } from "../../core/store.js";
 import { register as registerSound, setTrack, playSfx } from "../../core/sound.js";
@@ -113,6 +113,12 @@ const me = {
 
 // The kinds a Three of a Kind may demand, fetched so card names live only in Go.
 const catalogue = { demandable: [], kinds: [] };
+
+// The Nope window's contents, held by reference rather than looked up by id.
+// It is handed to the shared prompt, and the *next* prompt to open takes the
+// extra slot back — which detaches this node from the document, so getElementById
+// would stop finding it after the first favor of the game.
+let nopePanel = null;
 
 // The slug matters: the expansion adds five more kinds a trio could demand, and
 // asking without it would offer the base game's list at an Imploding table.
@@ -233,8 +239,9 @@ export default {
       el.hidden = ctx.game() !== "kittens-imploding";
     }
 
+    nopePanel = $("nope-panel");
+
     $("hand-cover").onclick = toggleCoverHand;
-    $("target-cancel").onclick = () => { me.awaitingTarget = false; rerender(); };
     $("log-collapse").onclick = () => setLogOpen(!logOpen());
     $("rules-table").onclick = () => showRules(true);
     $("rules-close").onclick = () => showRules(false);
@@ -253,7 +260,7 @@ export default {
     cancelAnimationFrame(countdownRaf);
     clearTimeout(blockedTimer);
     resetCinema();
-    document.documentElement.style.removeProperty("--nope-h");
+    nopePanel = null;
     ctx = null;
   },
 
@@ -267,16 +274,17 @@ export default {
     setTrack(v.phase === "game_over" ? "theme" : null);
   },
 
-  // The shell has moved to one of its own screens. The Nope bar goes with the
-  // table rather than staying put, because it is fixed to the bottom of the
-  // viewport and would otherwise float over the lobby.
+  // The shell has moved to one of its own screens. An open action window goes
+  // with the table: it is a prompt about a play at a table that is no longer on
+  // screen, and the shared modal would otherwise sit over the lobby.
   //
   // The rules panel deliberately survives this: its button in the lobby is the
   // shell's, and closing the panel because the table went away would make that
   // button useless exactly where it is offered.
   leaveTable() {
     $("table").hidden = true;
-    $("nope-bar").hidden = true;
+    if (modalKind() === "nope" || modalKind() === "target") closeModal();
+    me.awaitingTarget = false;
     cancelAnimationFrame(countdownRaf);
   },
 
@@ -325,8 +333,11 @@ function renderTable(v) {
   renderSeats(v);
   renderDiscard(v);
   renderHand(v);
+  // Before renderActions, which is the other thing that can put a prompt up:
+  // there is one modal, and an open action window outranks a target you were
+  // still choosing.
+  renderNopeWindow(v);
   renderActions(v);
-  renderNopeBar(v);
   renderLog(v, logLine);
   renderPrompts(v);
 }
@@ -472,6 +483,9 @@ function renderHand(v) {
     return el;
   }));
   me.flipping = 0;
+  // A hand of thirteen scrolls, and the row cut off at the bottom edge is the
+  // only clue — so fade it, the way the Favor picker does.
+  markScrollable($("hand"));
 
   const btn = $("hand-cover");
   btn.hidden = !v.me.alive || v.me.hand.length === 0;
@@ -511,38 +525,95 @@ function renderActions(v) {
     : plan.why;
   $("hint").classList.toggle("warn", Boolean(me.blockedHint));
 
-  const row = $("target-row");
-  row.hidden = !me.awaitingTarget;
+  // Only ever over an empty screen or its own ring: something else already up is
+  // a phase that has taken over, and it must not be replaced from here.
   if (me.awaitingTarget) {
-    $("target-buttons").replaceChildren(...v.seats
-      .filter((s) => s.alive && s.id !== ctx.me())
-      .map((s) => {
-        const b = document.createElement("button");
-        b.className = "btn small";
-        b.textContent = s.name;
-        b.onclick = () => playSelection(s.id);
-        return b;
-      }));
+    if (!modalKind()) openTargetModal(v);
+  } else if (modalKind() === "target") {
+    closeModal();
   }
+}
+
+// ────────────────────────────────────────────────────────── picking a target
+
+// The dial. A row of name buttons under the hand made the choice a reading task
+// and put the last player furthest from your thumb; faces on a ring are one
+// glance and one reach. Shown in the middle of the screen for the same reason
+// the Nope window now is — the bottom of a phone is already full.
+function openTargetModal(v) {
+  const candidates = v.seats.filter((s) => s.alive && s.id !== ctx.me());
+
+  const ring = document.createElement("div");
+  ring.className = "target-ring";
+  ring.id = "target-buttons";
+  ring.dataset.count = String(candidates.length);
+
+  // Angles start where the arrangement stays symmetric about the vertical: from
+  // the left for an even count, from the top for an odd one. So two candidates
+  // read left-and-right and four read like a compass, rather than either landing
+  // as an off-axis pinwheel.
+  const start = candidates.length % 2 === 0 ? 180 : -90;
+  const radius = candidates.length === 1 ? 0 : 34; // % of the ring from centre
+
+  ring.replaceChildren(...candidates.map((s, i) => {
+    const angle = ((start + (i * 360) / candidates.length) * Math.PI) / 180;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "target-pick";
+    b.dataset.seat = s.id;
+    b.style.left = `${50 + radius * Math.cos(angle)}%`;
+    b.style.top = `${50 + radius * Math.sin(angle)}%`;
+
+    const name = document.createElement("span");
+    name.className = "target-name";
+    name.textContent = s.name;
+    const cards = document.createElement("span");
+    cards.className = "target-cards";
+    cards.textContent = `${s.handCount} card${s.handCount === 1 ? "" : "s"}`;
+
+    b.append(ctx.avatarChip(s), name, cards);
+    b.onclick = () => playSelection(s.id);
+    return b;
+  }));
+
+  const { alt } = openModal("target", {
+    title: "Play on whom?",
+    body: playLabel(selectedCards(v)),
+    extra: [ring],
+    alt: "Cancel",
+  });
+  alt.onclick = () => { me.awaitingTarget = false; closeModal(); rerender(); };
+}
+
+// What is about to land on them, named rather than left to memory: the hand is
+// behind the prompt while it is open.
+function playLabel(sel) {
+  if (!sel.length) return "";
+  const names = [...new Set(sel.map((c) => c.name))].join(" + ");
+  return sel.length > 1 ? `Playing ${sel.length} cards — ${names}` : `Playing ${names}`;
 }
 
 // ────────────────────────────────────────────────────────── the nope window
 
-// reserveForNopeBar keeps the hand clear of the fixed bottom bar by telling the
-// layout exactly how tall it currently is.
-function reserveForNopeBar(bar) {
-  const h = bar.hidden ? 0 : bar.offsetHeight;
-  document.documentElement.style.setProperty("--nope-h", `${h}px`);
-}
-
-function renderNopeBar(v) {
-  const bar = $("nope-bar");
+// The window is shown to the whole table, not only to whoever can act: the
+// countdown is the point, and a player with no Nope in hand still needs to know
+// how long until the play lands. The buttons are what varies by seat.
+//
+// Unlike the other prompts this one is refreshed on every state rather than
+// opened once — the text changes as Nopes stack, and each one restarts the clock.
+function renderNopeWindow(v) {
   if (v.phase !== "nope" || !v.pending) {
-    bar.hidden = true;
-    reserveForNopeBar(bar);
+    if (modalKind() === "nope") closeModal();
     return;
   }
-  bar.hidden = false;
+  const panel = nopePanel;
+  panel.hidden = false;
+  if (modalKind() !== "nope") {
+    // A play is on the table, so whatever you were lining up is moot — dropping
+    // it here also stops renderActions reopening the target ring underneath.
+    me.awaitingTarget = false;
+    openModal("nope", { title: "Hold on…", extra: [panel] });
+  }
 
   const p = v.pending;
   const names = p.cards.map((c) => c.name).join(" + ");
@@ -553,17 +624,19 @@ function renderNopeBar(v) {
   const stack = p.nopes > 0
     ? ` — ${p.nopes} Nope${p.nopes > 1 ? "s" : ""} stacked, so it ${p.cancelled ? "will NOT happen" : "WILL happen"}`
     : "";
-  $("nope-text").textContent = `${nameOf(p.actorId)} played ${names}${on}${stack}`;
+  // Queried off the panel rather than by id: it spends part of its life detached
+  // from the document, and getElementById does not reach into a detached tree.
+  panel.querySelector("#nope-text").textContent =
+    `${nameOf(p.actorId)} played ${names}${on}${stack}`;
 
-  const nopeBtn = $("nope-btn");
+  const nopeBtn = panel.querySelector("#nope-btn");
   nopeBtn.hidden = !v.me.canNope;
   nopeBtn.onclick = () => send({ type: "nope" });
 
-  const passBtn = $("pass-btn");
+  const passBtn = panel.querySelector("#pass-btn");
   passBtn.hidden = !v.me.canPass;
   passBtn.onclick = () => send({ type: "pass" });
 
-  reserveForNopeBar(bar);
   tickCountdown();
 }
 
@@ -576,8 +649,9 @@ function tickCountdown() {
   const total = me.windowTotalMs || 20000;
   const step = () => {
     const left = Math.max(0, me.windowEndsAt - performance.now());
-    $("nope-fill").style.width = `${Math.min(100, (left / total) * 100)}%`;
-    if (left > 0 && !$("nope-bar").hidden) countdownRaf = requestAnimationFrame(step);
+    const fill = nopePanel && nopePanel.querySelector("#nope-fill");
+    if (fill) fill.style.width = `${Math.min(100, (left / total) * 100)}%`;
+    if (left > 0 && modalKind() === "nope") countdownRaf = requestAnimationFrame(step);
   };
   step();
 }

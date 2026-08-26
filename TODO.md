@@ -2,6 +2,36 @@
 
 ## Done
 
+- ~~The hand covered the table, and the Nope window sat on the hand~~ — three
+  layout changes, all reported from real play.
+
+  **The table no longer loses to the hand.** With a big hand the deck, the
+  discard and the risk gauge slid *under* the hand bar and were cut off. The
+  cards in the middle now size themselves off the height they are given, so a
+  short window shrinks them instead, and `.table-body` carries a `min-height` so
+  flexbox takes the space out of the hand — which already scrolls — rather than
+  out of the table. Two CSS traps on the way: `min(--card-h, 100%)` needs a
+  containing block with a *definite* height, which a flex item is not, so
+  `.center` and `.deck-stack` are each one `minmax(0, 1fr)` grid row; and
+  `align-content: center` re-sizes that row to its content and breaks it again.
+  Measured, not eyeballed: at 1440×640 the deck was 219px tall in a 105px box.
+
+  **The Nope window is a centred prompt.** It was a bar fixed to the bottom of
+  the screen, which on a phone landed on top of the hand and the action row. It
+  is now the shared modal, shown to the whole table — the countdown is the point,
+  and a player with no Nope still needs to see how long is left — with the
+  buttons appearing only for whoever can act.
+
+  **Picking a target is a dial.** A row of name buttons under the hand made the
+  choice a reading task and put the last player furthest from your thumb. Now it
+  is faces on a ring, in the middle of the screen: angles start from the left for
+  an even count and the top for an odd one, so two candidates read left-and-right
+  and four read like a compass instead of an off-axis pinwheel.
+
+  Also: the hand fades at its bottom edge when it scrolls, the same treatment the
+  Favor picker got, because a row clipped mid-card reads as a rendering fault.
+  `markScrollable` moved to `core/dom.js` so both use one copy.
+
 - ~~Show the armed Imploding Kitten on the deck, and give the expansion its box
   art~~ — the deck now renders the card itself, as an animation, but **only while
   the kitten is genuinely the top card**. That is a new disclosure and a

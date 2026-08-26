@@ -58,12 +58,6 @@
     </aside>
   </div>
 
-  <div id="target-row" class="target-row" hidden>
-    <span class="target-label">Play on whom?</span>
-    <div id="target-buttons" class="target-buttons"></div>
-    <button id="target-cancel" class="btn ghost small">Cancel</button>
-  </div>
-
   <footer class="handbar">
     <div id="hand" class="hand"></div>
     <div class="actions">
@@ -290,14 +284,18 @@
 <!-- Explosions and defuses, played over the table from the shared log. -->
 <div id="cinema" class="cinema" hidden aria-hidden="true"></div>
 
-<!-- ───────────────────────── nope window ───────────────────────── -->
-<div id="nope-bar" class="nope-bar" hidden>
-  <div class="nope-inner">
-    <p id="nope-text" class="nope-text"></p>
-    <div class="nope-timer"><i id="nope-fill"></i></div>
-    <div class="nope-actions">
-      <button id="nope-btn" class="btn nope" hidden>NOPE!</button>
-      <button id="pass-btn" class="btn ghost" hidden>Let it happen</button>
-    </div>
+<!-- ───────────────────────── nope window ─────────────────────────
+     Kept out of the table's own layout: renderNopeWindow() moves this whole
+     block into the shared prompt, in the middle of the screen. It lived along
+     the bottom of the screen and sat on top of the hand there. Markup rather
+     than built in JS because it is fixed furniture — only the text and the
+     countdown change — and it stays here so the whole prompt is readable in one
+     place. -->
+<div id="nope-panel" class="nope-inner" hidden>
+  <p id="nope-text" class="nope-text"></p>
+  <div class="nope-timer"><i id="nope-fill"></i></div>
+  <div class="nope-actions">
+    <button id="nope-btn" class="btn nope" hidden>NOPE!</button>
+    <button id="pass-btn" class="btn ghost" hidden>Let it happen</button>
   </div>
 </div>
