@@ -13,6 +13,9 @@
     <span id="turn-banner" class="turn-banner"></span>
     <span id="sound-table"></span>
     <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
+    <button id="leave-table" class="btn ghost small" aria-label="Leave the game" title="Leave the game">
+      <i class="fa-solid fa-right-from-bracket"></i>
+    </button>
   </header>
 
   <div id="seats" class="seats"></div>
@@ -30,6 +33,16 @@
             <span id="deck-count" class="deck-count"></span>
           </span>
         </button>
+      </div>
+      <!-- A fixed red-to-green danger scale rather than a bar that fills: the
+           colour at a given height never changes, only where the pointer sits
+           on it, so "it's up in the red" means the same thing on turn one and
+           turn twenty. Beside the deck rather than under it, since that is the
+           card the pointer is actually about. -->
+      <div id="risk-meter" class="risk-meter">
+        <div class="risk-track" aria-hidden="true">
+          <span id="risk-pointer" class="risk-pointer"></span>
+        </div>
         <p id="deck-risk" class="deck-risk"></p>
       </div>
       <div id="discard" class="discard"></div>
@@ -43,12 +56,6 @@
       </button>
       <ol id="log" class="log" aria-live="polite"></ol>
     </aside>
-  </div>
-
-  <div id="target-row" class="target-row" hidden>
-    <span class="target-label">Play on whom?</span>
-    <div id="target-buttons" class="target-buttons"></div>
-    <button id="target-cancel" class="btn ghost small">Cancel</button>
   </div>
 
   <footer class="handbar">
@@ -277,14 +284,18 @@
 <!-- Explosions and defuses, played over the table from the shared log. -->
 <div id="cinema" class="cinema" hidden aria-hidden="true"></div>
 
-<!-- ───────────────────────── nope window ───────────────────────── -->
-<div id="nope-bar" class="nope-bar" hidden>
-  <div class="nope-inner">
-    <p id="nope-text" class="nope-text"></p>
-    <div class="nope-timer"><i id="nope-fill"></i></div>
-    <div class="nope-actions">
-      <button id="nope-btn" class="btn nope" hidden>NOPE!</button>
-      <button id="pass-btn" class="btn ghost" hidden>Let it happen</button>
-    </div>
+<!-- ───────────────────────── nope window ─────────────────────────
+     Kept out of the table's own layout: renderNopeWindow() moves this whole
+     block into the shared prompt, in the middle of the screen. It lived along
+     the bottom of the screen and sat on top of the hand there. Markup rather
+     than built in JS because it is fixed furniture — only the text and the
+     countdown change — and it stays here so the whole prompt is readable in one
+     place. -->
+<div id="nope-panel" class="nope-inner" hidden>
+  <p id="nope-text" class="nope-text"></p>
+  <div class="nope-timer"><i id="nope-fill"></i></div>
+  <div class="nope-actions">
+    <button id="nope-btn" class="btn nope" hidden>NOPE!</button>
+    <button id="pass-btn" class="btn ghost" hidden>Let it happen</button>
   </div>
 </div>

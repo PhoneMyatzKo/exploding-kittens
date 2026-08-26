@@ -57,7 +57,7 @@ Screenshots land in `shots/` (gitignored).
 | `selection.js` | One non-cat at a time, cats stack only with matching cats, a refused tap explains itself, the hand can be covered; lobby mute and leaving the room properly |
 | `logtest.js` | The log behaves like a chat box: always on screen, does not overlap the hand, does not yank a scrolled reader, follows when pinned, collapses and remembers it |
 | `publiclobby.js` | Only joinable rooms are listed — private, dealt and full ones drop out; joining from the list; visibility remembered |
-| `modals.js` | The Favor picker fits on screen and every card in it can be reached, on a laptop, a small window and two phone sizes — plus a hand twice the size a deal can produce |
+| `modals.js` | Everything that appears over the table, on a laptop, a small window and two phone sizes: the Favor picker fits and every card in it can be reached (including a hand twice the size a deal can produce), a big hand never covers the deck or the discard, the Nope window is a centred prompt with reachable buttons and a draining clock, and the target dial spreads its candidates out inside the box |
 | `rules.js` | The how-to-play sheet, per deck: it lists exactly the cards this deck contains, shows them as *loaded* card pictures rather than emoji, reads in Burmese with the art intact, and remembers the language |
 | `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, stays hidden while buried but shows its own animated card once it surfaces, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
@@ -85,7 +85,13 @@ skim past the skip line. Both are enforced by the engine and covered in
 screen, so a list of cards stacks two-per-row into a very tall box — the Favor
 picker running off the bottom of the screen was reported on a PC, and the phone
 viewports alone would not have found it. Anything sized in `vw` needs checking at
-both ends of the range, not just the small one.
+both ends of the range, not just the small one. The same asymmetry hid the deck
+sliding under the hand: the *width* clamps on a wide screen while the height does
+not, so a 1440×640 window breaks where a phone does not.
+
+**Windows scaling moves the goalposts.** A screenshot 1855px wide from a machine
+at 125% is a 1484px viewport, and that is what the CSS sees. When a report comes
+with a picture, divide before picking a viewport to reproduce in.
 
 Three traps that have caught this harness before:
 

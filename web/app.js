@@ -16,7 +16,7 @@ import {
 import {
   register as registerSound, setTrack, armAudio, mountMuteButtons,
 } from "./core/sound.js";
-import { closeModal } from "./core/modal.js";
+import { openModal, closeModal } from "./core/modal.js";
 import { resetFeed } from "./core/feed.js";
 import { toast } from "./core/toast.js";
 
@@ -371,6 +371,22 @@ const gameCtx = {
   view: () => app.view,
 };
 
+// Every game's table carries a "leave-table" button under that same id, the
+// way each carries "rules-table" and "sound-table" — and leaving mid-round
+// works identically for all of them, so it is wired once here rather than
+// once per game. Asked first, since the table carries on without you the
+// moment you confirm.
+function confirmLeaveTable() {
+  const { ok, alt } = openModal("leave", {
+    title: "Leave the game?",
+    body: "The table carries on without you. Come back to the same room to pick your seat back up.",
+    ok: "Leave",
+    alt: "Stay",
+  });
+  ok.onclick = () => { closeModal(); leaveRoom(); };
+  alt.onclick = closeModal;
+}
+
 // A catalogue slug is not always the name of a directory under web/games. An
 // expansion is its own tile on the menu — its own deck, theme and player cap —
 // but it is the same client as the game it expands, so it is served the same two
@@ -417,6 +433,7 @@ async function mountGame(slug) {
   mounted.loading = "";
 
   mod.mount(gameCtx);
+  $("leave-table").onclick = confirmLeaveTable;
   mountMuteButtons([...SHELL_SLOTS, ...(mod.slots || [])]);
 
   // The state that was waiting for this, if one beat the fetch here.

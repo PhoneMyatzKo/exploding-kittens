@@ -12,6 +12,7 @@
 // comes back.
 
 import { $ } from "../../core/dom.js";
+import { groupByCategory } from "../../core/sort.js";
 import { logOpen, setStoredLogOpen } from "../../core/store.js";
 import { openModal, closeModal, modalKind } from "../../core/modal.js";
 import { renderLog, logPrivate, freshEvents, scrollLogToEnd } from "../../core/feed.js";
@@ -197,7 +198,11 @@ function renderDiscard(v) {
 
 function renderHand(v) {
   const playable = new Set(v.me.playable || []);
-  $("hand").replaceChildren(...v.me.hand.map((c) => {
+  // Grouped by colour, the way anybody sorts a real UNO hand — wilds cluster
+  // under their own "colour" since ColourSlug is "wild" for those.
+  const hand = groupByCategory(v.me.hand, (c) => c.colour);
+
+  $("hand").replaceChildren(...hand.map((c) => {
     const el = cards.element(c);
     const canPlay = playable.has(c.id);
     el.classList.toggle("playable", canPlay);
