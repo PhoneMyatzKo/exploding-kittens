@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"errors"
-	"math/rand"
 )
 
 const (
@@ -23,26 +23,26 @@ type Seat struct {
 var ErrPlayerCount = errors.New("uno needs 2 to 10 players")
 
 // NewGame deals a game to the target score.
-func NewGame(seats []Seat, rng *rand.Rand) (*State, []Event, error) {
+func NewGame(seats []Seat, rng *prng.Source) (*State, []Event, error) {
 	return NewGameTo(seats, rng, DefaultTarget)
 }
 
 // NewGameTo deals a game that ends when somebody reaches target points. A target
 // of zero makes it a single round, which is how a table that only has ten
 // minutes plays.
-func NewGameTo(seats []Seat, rng *rand.Rand, target int) (*State, []Event, error) {
+func NewGameTo(seats []Seat, rng *prng.Source, target int) (*State, []Event, error) {
 	n := len(seats)
 	if n < MinPlayers || n > MaxPlayers {
 		return nil, nil, ErrPlayerCount
 	}
 	if rng == nil {
-		rng = rand.New(rand.NewSource(rand.Int63()))
+		rng = prng.NewSeeded()
 	}
 	if target < 0 {
 		target = 0
 	}
 
-	s := &State{Target: target, seats: append([]Seat(nil), seats...), rng: rng}
+	s := &State{Target: target, Seats: append([]Seat(nil), seats...), RNG: rng}
 	for _, seat := range seats {
 		s.Players = append(s.Players, &Player{ID: seat.ID, Name: seat.Name})
 	}
@@ -59,7 +59,7 @@ func NewGameTo(seats []Seat, rng *rand.Rand, target int) (*State, []Event, error
 // subsequent rounds begin.
 func (s *State) deal(first int) []Event {
 	deck := fullDeck()
-	shuffle(deck, s.rng)
+	shuffle(deck, s.RNG)
 
 	for _, p := range s.Players {
 		p.Hand = make([]Card, handSize)
@@ -83,7 +83,7 @@ func (s *State) deal(first int) []Event {
 	}
 	if len(aside) > 0 {
 		deck = append(deck, aside...)
-		shuffle(deck, s.rng)
+		shuffle(deck, s.RNG)
 	}
 
 	s.Draw = deck

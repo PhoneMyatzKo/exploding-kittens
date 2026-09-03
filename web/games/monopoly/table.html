@@ -1,0 +1,141 @@
+<!-- Monopoly Myanmar — everything on screen once the game is dealt.
+     Injected by mountGame() in app.js, like every game's table.
+
+     The board is not written out here: forty squares built by hand would be
+     forty places to get a grid position wrong, and the names and prices come
+     from the server anyway (GET /api/board). renderBoard() fills #board. -->
+
+<section id="table" class="screen table" hidden>
+  <header class="topbar">
+    <span id="table-code" class="pill"></span>
+    <span id="turn-banner" class="turn-banner"></span>
+    <span id="sound-table"></span>
+    <div class="lang-toggle" role="radiogroup" aria-label="Language">
+      <button id="lang-en" class="lang on" role="radio" aria-checked="true" type="button">EN</button>
+      <button id="lang-my" class="lang" role="radio" aria-checked="false" type="button" lang="my">မြန်မာ</button>
+    </div>
+    <button id="rules-table" class="btn ghost small" aria-label="How to play" title="How to play">?</button>
+    <button id="leave-table" class="btn ghost small" aria-label="Leave the game" title="Leave the game">
+      <i class="fa-solid fa-right-from-bracket"></i>
+    </button>
+  </header>
+
+  <div class="table-body">
+    <div class="board-wrap">
+      <!-- 11×11: forty squares round the edge, the middle left for the dice and
+           whatever the current player has to decide. -->
+      <div id="board" class="board"></div>
+      <div id="board-centre" class="board-centre">
+        <div id="dice" class="dice" aria-live="polite"></div>
+        <p id="board-status" class="board-status"></p>
+        <div class="board-actions">
+          <button id="roll-btn" class="btn primary" disabled>Roll</button>
+          <button id="buy-btn" class="btn primary" hidden></button>
+          <button id="pass-btn" class="btn ghost" hidden>No thanks</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Players and the play-by-play in one column beside the board, rather than
+         a seat strip across the top. The board is square, so its size is decided
+         by the shorter axis — a full-width strip above it was spending 130px of
+         height on a row that had width going spare. -->
+    <aside class="side-panel">
+      <div id="seats" class="seats"></div>
+
+      <aside id="log-panel" class="log-panel">
+        <button id="log-collapse" class="log-head" aria-expanded="true"
+                aria-controls="log" title="Hide the log">
+          <strong>Play by play</strong>
+          <span id="log-caret" class="caret">▾</span>
+        </button>
+        <ol id="log" class="log" aria-live="polite"></ol>
+      </aside>
+    </aside>
+  </div>
+</section>
+
+<!-- ───────────────────────── rules ───────────────────────── -->
+<aside id="rules-panel" class="rules-panel" hidden>
+  <div class="rules-head">
+    <strong class="rules-title">How to play</strong>
+    <button id="rules-close" class="btn ghost small">Close</button>
+  </div>
+
+  <div class="rules-body">
+  <section class="rules-lang" data-lang="en">
+    <p><b>Own the board, break everybody else.</b> Roll, move, and buy what you
+      land on. When somebody else lands on your square, they pay you rent. The
+      last player with money wins.</p>
+
+    <h3>Your turn</h3>
+    <p>Roll the dice and your token moves that many squares, clockwise. Whatever
+      you land on happens straight away. Throw a double and you go again — but
+      three doubles in a row and you are sent to the jail corner.</p>
+
+    <h3>Buying</h3>
+    <p>Land on a town, a station or a utility that nobody owns and you may buy it
+      at the printed price. Turn it down and it stays with the bank.</p>
+
+    <h3>Rent</h3>
+    <p>Land on somebody else's square and you pay them. <b>Own every town of one
+      colour and the rent on all of them doubles</b> — which is why the pairs and
+      trios are worth chasing. A station charges more for each of the four you
+      hold; a utility charges four times your throw, or ten times if the owner has
+      both.</p>
+
+    <h3>Money</h3>
+    <p>Everybody starts with K1,500,000, and the bank pays you K200,000 every time
+      you pass GO. Land on a tax square and you pay it. Owe more than you have and
+      you are out — whatever you were carrying goes to whoever you owed.</p>
+
+    <div class="rules-slice">
+      <h3>Not in yet</h3>
+      <p>This is the first slice of the game. Chance and Community Chest squares
+        do nothing when you land on them, the jail corner does not hold you, and
+        there are no houses, auctions, mortgages or trades. Without houses, rents
+        stay small — so expect a long, rich game rather than a bankruptcy.</p>
+    </div>
+  </section>
+
+  <section class="rules-lang" data-lang="my" lang="my" hidden>
+    <p><b>ကစားပွဲတစ်ခုလုံးကို ပိုင်ဆိုင်ပါ။</b> အံစာတုံးလှိမ့်၍ လှိမ့်ရသလောက်
+      ရွှေ့ပါ။ ရောက်သည့်ကွက်ကို ဝယ်နိုင်သည်။ အခြားသူတစ်ဦး သင့်ကွက်ပေါ်
+      ရောက်လာလျှင် သင့်ကို အခွန်ပေးရမည်။ ငွေအကုန်မခံသည့် နောက်ဆုံးသူ
+      အောင်ပွဲရသည်။</p>
+
+    <h3>သင့်အလှည့်</h3>
+    <p>အံစာတုံးလှိမ့်ပါ။ သင့်အမှတ်အသားသည် လက်ယာရစ်အတိုင်း ရွေ့လျားမည်။
+      ရောက်သည့်ကွက်၏ အကျိုးသက်ရောက်မှုသည် ချက်ချင်းဖြစ်သည်။ အံစာနှစ်လုံး
+      တူညီလျှင် ထပ်လှိမ့်ရမည် — သို့သော် သုံးကြိမ်ဆက်တိုက် တူညီပါက
+      အချုပ်ထောင့်သို့ ရောက်မည်။</p>
+
+    <h3>ဝယ်ယူခြင်း</h3>
+    <p>ပိုင်ရှင်မရှိသေးသော မြို့၊ ဘူတာ သို့မဟုတ် အခြေခံအဆောက်အအုံပေါ်
+      ရောက်ပါက သတ်မှတ်ထားသည့်တန်ဖိုးဖြင့် ဝယ်နိုင်သည်။ ငြင်းပယ်လျှင်
+      ဘဏ်လက်တွင်းသာ ရှိနေမည်။</p>
+
+    <h3>အခွန်</h3>
+    <p>အခြားသူ၏ကွက်ပေါ် ရောက်လျှင် သူတို့ကို ပေးရမည်။ <b>အရောင်တစ်မျိုးတည်း၏
+      မြို့အားလုံးကို ပိုင်ဆိုင်ပါက ထိုကွက်များ၏ အခွန် နှစ်ဆတက်သည်</b> —
+      ဒါကြောင့် အစုံလိုက် စုဆောင်းရန် တန်သည်။ ဘူတာသည် ပိုင်ဆိုင်သည့်
+      အရေအတွက်အလိုက် တက်သည်။ အခြေခံအဆောက်အအုံသည် လှိမ့်ရသည့်
+      အမှတ်၏ လေးဆ၊ နှစ်ခုလုံးပိုင်ပါက ဆယ်ဆ ဖြစ်သည်။</p>
+
+    <h3>ငွေ</h3>
+    <p>အားလုံး ကျပ် ၁၅ သိန်း ဖြင့် စတင်သည်။ စတင်ကွက် (GO) ကို ဖြတ်သွားတိုင်း
+      ဘဏ်မှ ကျပ် ၂ သိန်း ရမည်။ အခွန်ကွက်ပေါ် ရောက်လျှင် ပေးရမည်။ လက်တွင်
+      ရှိသည်ထက် ပိုပေးရမည်ဆိုပါက ပွဲထွက်ရမည် — သင့်လက်တွင် ရှိသမျှ
+      ပေးရမည့်သူဆီ ရောက်သွားမည်။</p>
+
+    <div class="rules-slice">
+      <h3>မပါဝင်သေးသည်များ</h3>
+      <p>ဒါက ကစားပွဲ၏ ပထမအဆင့်သာ ဖြစ်သည်။ ကံစမ်းကွက်နှင့်
+        ရပ်ရွာရန်ပုံငွေကွက်များသည် အလုပ်မလုပ်သေးပါ။ အချုပ်ထောင့်သည်
+        သင့်ကို ချုပ်ထားမည်မဟုတ်။ အိမ်၊ လေလံ၊ အပေါင်နှင့် အလဲအလှယ်
+        မပါဝင်သေးပါ။ အိမ်မရှိသဖြင့် အခွန်များ နည်းနေမည် — ထို့ကြောင့်
+        ပွဲထွက်ရန်ထက် ရှည်လျားချမ်းသာသော ပွဲတစ်ပွဲ ဖြစ်လိမ့်မည်။</p>
+    </div>
+  </section>
+  </div>
+</aside>

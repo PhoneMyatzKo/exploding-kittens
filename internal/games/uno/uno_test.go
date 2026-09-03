@@ -1,11 +1,11 @@
 package uno
 
 import (
-	"math/rand"
 	"testing"
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/uno/game"
+	"boardgame/kittens/internal/prng"
 )
 
 func seats(n int) []core.Seat {
@@ -18,7 +18,7 @@ func seats(n int) []core.Seat {
 
 func dealt(t *testing.T, n int) *Game {
 	t.Helper()
-	g := New(rand.New(rand.NewSource(4))).(*Game)
+	g := New(prng.New(uint64(4))).(*Game)
 	if _, err := g.Deal(seats(n)); err != nil {
 		t.Fatalf("deal: %v", err)
 	}

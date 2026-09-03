@@ -2,13 +2,13 @@ package view
 
 import (
 	"encoding/json"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
 	"boardgame/kittens/internal/games/kittens/game"
+	"boardgame/kittens/internal/prng"
 )
 
 // cardIDRe finds the numeric card IDs in a serialised view. Seat and player IDs
@@ -45,7 +45,7 @@ func leakScan(t *testing.T, variant game.Variant) {
 	t.Helper()
 	sawAlter := false
 	for seed := int64(0); seed < 60; seed++ {
-		rng := rand.New(rand.NewSource(seed))
+		rng := prng.New(uint64(seed))
 		n := 2 + int(seed)%(game.MaxPlayersFor(variant)-1)
 		gs, ms := seats(n)
 		s, err := game.NewGame(gs, variant, rng)
@@ -126,7 +126,7 @@ func leakScan(t *testing.T, variant game.Variant) {
 // from the top would be a bigger edge than any card in the game gives.
 func TestArmedKittenIsNamedOnlyOnTop(t *testing.T) {
 	gs, ms := seats(3)
-	s, err := game.NewGame(gs, game.Imploding, rand.New(rand.NewSource(11)))
+	s, err := game.NewGame(gs, game.Imploding, prng.New(uint64(11)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestLobbyViewHasNoCards(t *testing.T) {
 
 func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 	gs, ms := seats(3)
-	s, err := game.NewGame(gs, game.Original, rand.New(rand.NewSource(7)))
+	s, err := game.NewGame(gs, game.Original, prng.New(uint64(7)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestSeatsHideOtherHandsButKeepCounts(t *testing.T) {
 // the deal and after an elimination has taken a Kitten out of the game.
 func TestKittensLeftTracksTheDeck(t *testing.T) {
 	gs, ms := seats(4)
-	rng := rand.New(rand.NewSource(3))
+	rng := prng.New(uint64(3))
 	s, err := game.NewGame(gs, game.Original, rng)
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +248,7 @@ func TestKittensLeftTracksTheDeck(t *testing.T) {
 
 // anyLegalMove mirrors the engine test's random driver, kept local so the two
 // packages stay independent.
-func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
+func anyLegalMove(s *game.State, rng *prng.Source) game.Action {
 	switch s.Phase {
 	case game.PhaseDefuse:
 		return game.Action{Kind: game.ActPlaceKitten, PlayerID: s.CurrentID(), Index: rng.Intn(s.DeckSize() + 1)}
@@ -285,7 +285,7 @@ func anyLegalMove(s *game.State, rng *rand.Rand) game.Action {
 	return game.Action{Kind: game.ActDraw, PlayerID: p.ID}
 }
 
-func catSetMove(s *game.State, p *game.Player, rng *rand.Rand) (game.Action, bool) {
+func catSetMove(s *game.State, p *game.Player, rng *prng.Source) (game.Action, bool) {
 	groups := map[string][]int{}
 	for _, c := range p.Hand {
 		if strings.HasPrefix(c.Slug, "cat-") {

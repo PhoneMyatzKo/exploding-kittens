@@ -5,3 +5,10 @@
 # in history. static.go embeds by extension, so these never reach the binary
 # either.
 static/src/audio/source.*
+
+# Games in progress, checkpointed so a restart does not end them. Written next to
+# the binary at runtime; it holds seat tokens and describes a moment that has
+# passed, so it is never something to commit.
+boardgame-state.json
+boardgame-state.json.tmp
+restart-test-state.json

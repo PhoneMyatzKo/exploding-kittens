@@ -9,6 +9,7 @@ package games
 
 import (
 	kittensgame "boardgame/kittens/internal/games/kittens/game"
+	monopolygame "boardgame/kittens/internal/games/monopoly/game"
 	unogame "boardgame/kittens/internal/games/uno/game"
 )
 
@@ -18,6 +19,7 @@ const (
 	Kittens          = "kittens"
 	KittensImploding = "kittens-imploding"
 	UNO              = "uno"
+	Monopoly         = "monopoly"
 )
 
 // Info is one tile on the menu.
@@ -51,6 +53,12 @@ var catalogue = []Info{
 	{
 		Slug: UNO, Name: "UNO", Tagline: "Match the colour or the number.",
 		Emoji: "🎴", Min: unogame.MinPlayers, Max: unogame.MaxPlayers, Playable: true,
+	},
+	{
+		Slug: Monopoly, Name: "Monopoly Myanmar",
+		Tagline: "Buy up Myanmar, bankrupt your friends. Rent in kyat.",
+		Emoji:   "🎩",
+		Min:     monopolygame.MinPlayers, Max: monopolygame.MaxPlayers, Playable: true,
 	},
 	{
 		Slug: "uno-no-mercy", Name: "UNO No Mercy", Tagline: "Stacking draws, no way out.",

@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"boardgame/kittens/internal/prng"
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/view"
 
@@ -381,7 +381,7 @@ func TestFullGameOverWebSockets(t *testing.T) {
 		}
 	}
 
-	rng := rand.New(rand.NewSource(7))
+	rng := prng.New(uint64(7))
 	for step := 0; step < 800; step++ {
 		v, _ := players[0].snapshot()
 		if v.Phase == "game_over" {
@@ -548,7 +548,7 @@ func act(t *testing.T, players []*player, i int, msg room.ClientMsg) {
 	}
 }
 
-func chooseMove(players []*player, rng *rand.Rand) (int, room.ClientMsg, bool) {
+func chooseMove(players []*player, rng *prng.Source) (int, room.ClientMsg, bool) {
 	for i, p := range players {
 		v, _ := p.snapshot()
 		if v == nil {
@@ -581,7 +581,7 @@ func chooseMove(players []*player, rng *rand.Rand) (int, room.ClientMsg, bool) {
 	return 0, room.ClientMsg{}, false
 }
 
-func pickPlay(v *view.View, rng *rand.Rand) (room.ClientMsg, bool) {
+func pickPlay(v *view.View, rng *prng.Source) (room.ClientMsg, bool) {
 	var others []string
 	for _, s := range v.Seats {
 		if s.Alive && s.ID != v.Me.ID {

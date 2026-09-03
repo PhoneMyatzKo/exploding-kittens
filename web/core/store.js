@@ -13,6 +13,7 @@ const key = {
   muted: "ek:muted",
   visibility: "ek:visibility",
   log: "ek:log",
+  lang: "ek:lang",
   token: (code) => `ek:token:${code}`,
 };
 
@@ -35,3 +36,11 @@ export const setStoredPublic = (pub) =>
 export const logOpen = () => localStorage.getItem(key.log) !== "closed";
 export const setStoredLogOpen = (open) =>
   localStorage.setItem(key.log, open ? "open" : "closed");
+
+// English or Burmese. Set from the Exploding Kittens rules sheet and read by
+// Monopoly's board, which names every square in both — so a table that reads
+// Burmese picks it once rather than per game. Anything unrecognised reads as
+// English rather than as a blank interface.
+export const storedLang = () => (localStorage.getItem(key.lang) === "my" ? "my" : "en");
+export const setStoredLang = (lang) =>
+  localStorage.setItem(key.lang, lang === "my" ? "my" : "en");

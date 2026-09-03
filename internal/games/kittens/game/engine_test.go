@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"fmt"
-	"math/rand"
 	"testing"
 )
 
@@ -12,7 +12,7 @@ import (
 // Note that a player holding no Nope card can never open a Nope window, so tests
 // that want an action to resolve instantly simply omit Nope from every hand.
 func mkState(hands [][]CardType, draw []CardType) *State {
-	s := &State{Phase: PhaseTurn, TurnsRemaining: 1, rng: rand.New(rand.NewSource(1))}
+	s := &State{Phase: PhaseTurn, TurnsRemaining: 1, RNG: prng.New(uint64(1))}
 	id := 0
 	for i, h := range hands {
 		p := &Player{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("P%d", i), Alive: true}
@@ -77,7 +77,7 @@ func TestNewGameSetup(t *testing.T) {
 			for i := range seats {
 				seats[i] = Seat{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("P%d", i)}
 			}
-			s, err := NewGame(seats, Original, rand.New(rand.NewSource(int64(n))))
+			s, err := NewGame(seats, Original, prng.New(uint64(n)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,7 +118,7 @@ func TestNewGameRejectsBadPlayerCount(t *testing.T) {
 		for i := range seats {
 			seats[i] = Seat{ID: fmt.Sprintf("p%d", i)}
 		}
-		if _, err := NewGame(seats, Original, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
+		if _, err := NewGame(seats, Original, prng.New(uint64(1))); err != ErrPlayerCount {
 			t.Errorf("NewGame with %d players: err = %v, want ErrPlayerCount", n, err)
 		}
 	}
@@ -770,7 +770,7 @@ func TestNopedAttackLeavesTurnAlone(t *testing.T) {
 // one player must be left standing.
 func TestRandomGamesAlwaysTerminate(t *testing.T) {
 	for seed := int64(0); seed < 200; seed++ {
-		rng := rand.New(rand.NewSource(seed))
+		rng := prng.New(uint64(seed))
 		n := 2 + int(seed)%4
 		seats := make([]Seat, n)
 		for i := range seats {
@@ -800,7 +800,7 @@ func TestRandomGamesAlwaysTerminate(t *testing.T) {
 }
 
 // randomMove picks an arbitrary legal action for whoever the phase says must act.
-func randomMove(s *State, rng *rand.Rand) Action {
+func randomMove(s *State, rng *prng.Source) Action {
 	switch s.Phase {
 	case PhaseDefuse:
 		return Action{Kind: ActPlaceKitten, PlayerID: s.current().ID, Index: rng.Intn(len(s.Draw) + 1)}
@@ -831,12 +831,12 @@ func randomMove(s *State, rng *rand.Rand) Action {
 
 // someSlug names an arbitrary card for a demand, so the driver exercises both
 // hitting and missing.
-func someSlug(rng *rand.Rand) string {
+func someSlug(rng *prng.Source) string {
 	all := []CardType{Defuse, Nope, Attack, Skip, Favor, Shuffle, SeeTheFuture, CatTaco}
 	return all[rng.Intn(len(all))].Slug()
 }
 
-func randomPlay(s *State, p *Player, rng *rand.Rand) (Action, bool) {
+func randomPlay(s *State, p *Player, rng *prng.Source) (Action, bool) {
 	var singles []Card
 	cats := map[CardType][]Card{}
 	for _, c := range p.Hand {

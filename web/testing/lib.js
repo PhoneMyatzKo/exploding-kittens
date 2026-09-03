@@ -93,11 +93,14 @@ export async function launch() {
 
 // Each player gets their own context, not just their own tab: localStorage holds
 // the seat token, and sharing it would make two tabs fight over one seat.
-export async function seat(browser, name, { phone = false } = {}) {
+// base overrides the server this player talks to. Only restart.js needs it: that
+// script runs its own server on its own port, because it has to stop and start it
+// and must not take the suite's out from under the other scripts.
+export async function seat(browser, name, { phone = false, base = BASE } = {}) {
   const ctx = await browser.newContext(phone ? { viewport: PHONE, ...PHONE } : {});
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.log(`  ! ${name} page error: ${e.message}`));
-  return new Player(page, name);
+  return new Player(page, name, base);
 }
 
 // safeClick tolerates the element vanishing between the visibility check and the
@@ -134,9 +137,10 @@ export async function waitFor(fn, { timeout = 8000, interval = 100, what = "cond
 // ─────────────────────────────────────────────────────────── the client
 
 export class Player {
-  constructor(page, name) {
+  constructor(page, name, base = BASE) {
     this.page = page;
     this.name = name;
+    this.base = base;
   }
 
   $(sel) {
@@ -147,7 +151,7 @@ export class Player {
   // to get to the room screen. Every check that is not about the menu itself
   // wants to be past it.
   async home(slug = "kittens") {
-    await this.page.goto(`${BASE}/`);
+    await this.page.goto(`${this.base}/`);
     await this.menu();
     await this.pickGame(slug);
   }

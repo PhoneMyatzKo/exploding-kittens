@@ -62,6 +62,8 @@ Screenshots land in `shots/` (gitignored).
 | `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, stays hidden while buried but shows its own animated card once it surfaces, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 | `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
+| `restart.js` | A game survives the server being killed and restarted: both players' browsers reconnect on their own, land back in their own seats holding the same cards, and can carry on playing. Owns its own server on its own port, because it has to stop and start it |
+| `monopoly.js` | The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band actually painted, tokens starting on GO and moving, a square's price and rent one tap away, and the whole board reading in Burmese and staying that way across a reload |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never
@@ -105,7 +107,13 @@ Three traps that have caught this harness before:
   runs.** These scripts execute top to bottom with their helpers underneath, so
   putting shared state next to the helper that uses it fails with "Cannot access
   X before initialization" — and only on the path that reads it, so it looks like
-  a logic bug. Declare shared state at the top of the file.
+  a logic bug. Declare shared state at the top of the file, and **write helpers as
+  `function` declarations rather than `const` arrows** — declarations hoist, so
+  they are immune. This has now caught four scripts.
+- **`seen.x = seen.x || await click(...)` short-circuits once it is true.** Written
+  that way in a play loop, the action stops being taken after it succeeds once —
+  so the table sits on an unanswered prompt for the rest of the run and the script
+  still passes, with thin coverage as the only clue. Do the action, then record it.
 - **`offsetTop` is relative to the nearest positioned ancestor**, not to the
   scroll box an element sits in. Arithmetic on it to decide "can this be
   scrolled to" quietly measures nothing. Scroll to the element and ask the
@@ -115,3 +123,16 @@ The client keeps its state in a module scope with nothing on `window`. That is
 correct, and the tests read the DOM instead. Resist the urge to export state for
 testing: an assertion against an internal variable can pass while the screen is
 broken, which is the entire failure mode these scripts exist to catch.
+
+**A signal you cannot send.** `restart.js` kills the server outright rather than
+asking it to stop, and that is not laziness: Node cannot send a real SIGINT on
+Windows — every signal maps to `TerminateProcess` — so the graceful path is not
+reachable from a test at all. It is also the more honest case, since a crash or a
+power cut looks the same. The server therefore checkpoints on a timer rather than
+only on the way out, which is what makes the test possible and the feature worth
+having.
+
+**Beware a check that reads leftover DOM.** The first version of `restart.js`
+waited for `#table` to be visible and passed instantly — the table stays on
+screen the whole time the socket is down. Waiting on `#conn-warning` being hidden
+is what actually proves the client is talking to a server again.

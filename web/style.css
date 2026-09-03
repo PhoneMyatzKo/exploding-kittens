@@ -155,6 +155,53 @@
    the ground, and body has to get out of the way. */
 :root[data-game="uno"] body { background: transparent; }
 
+/* ─────────────────── palette: Monopoly Myanmar ───────────────────
+   The board is the thing being looked at, and a Monopoly board is a pale field
+   with eight saturated colour bands on it — so the ground goes dark and quiet and
+   the board carries the colour. Green is the brand because the deeds and the
+   money are, and because it is the one hue none of the eight property groups
+   below uses at full strength. */
+
+:root[data-game="monopoly"] {
+  --brand-rgb: 22 92 62;         /* #165c3e deep green */
+  --accent-rgb: 227 178 62;      /* #e3b23e gold */
+  --surface-rgb: 250 247 240;    /* #faf7f0 board cream */
+  --grad-from-rgb: 22 92 62;
+  --grad-to-rgb: 227 178 62;
+  --muted-ink: #5c5a55;          /* 6.8:1 on the cream */
+
+  --shadow-rgb: 0 0 0;
+  --scrim-rgb: 0 0 0;
+
+  /* Ground family — a near-black table the board sits on. */
+  --bg: #14201a;
+  --bg-soft: #1e2b24;
+  --panel: #26332b;
+  --line: #3e4b43;
+  --ink: var(--surface);         /* 15.4:1 on the ground */
+  --muted: #a8b0aa;              /* 8.1:1 */
+
+  --accent-ink: #14201a;         /* 11.9:1 on the gold */
+  --danger: #b3261e;             /* 5.9:1 on the cream */
+
+  /* Surface family — the board and the panels. */
+  --surface-soft: #f1ece0;
+  --surface-line: #d5cdba;
+  --surface-ink: #14201a;
+
+  /* The eight property groups. Named here rather than in the board data: which
+     colour "orange" is drawn as is presentation, and the server only ever says
+     which set a square belongs to. */
+  --grp-brown: #7b4a2d;
+  --grp-lightblue: #7fc4e8;
+  --grp-pink: #cf4f8f;
+  --grp-orange: #e2822f;
+  --grp-red: #cf2b2b;
+  --grp-yellow: #e8cf3a;
+  --grp-green: #2f8f4f;
+  --grp-darkblue: #2b4fa8;
+}
+
 /* Surface family. Declaring the tokens on the container flips every descendant
    that reads --ink/--muted/--line/--bg-soft, so the rules below stay generic.
    The values come from whichever palette is in force; this rule only says which
@@ -300,9 +347,9 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .topnav {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 12px 20px;
-  background: var(--crimson); border-bottom: 1px solid var(--line);
+  background: var(--brand); border-bottom: 1px solid var(--line);
 }
-.brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--paper); }
+.brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
 
 .menu-body {
   width: min(1100px, 100%); margin: 0 auto;
@@ -313,12 +360,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .menu-head { display: grid; gap: 4px; text-align: center; }
 /* balance keeps the subtitle from dropping a single word onto its own line on a
    phone; browsers without it just wrap normally. */
-.menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--paper); text-wrap: balance; }
+.menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--ink); text-wrap: balance; }
 /* Every other heading in the app — the menu title, the rules panel's, a
    modal's — takes the serif face, distinct from the Outfit body copy under it. */
 .menu-title, h2, h3 { font-family: "PT Serif", serif; }
 .menu-sub { margin: 0; font-size: 14px; color: rgba(253,254,255,.82); text-wrap: balance; }
-.menu-status { margin: 0; font-size: 14px; color: var(--paper); font-weight: 600; }
+.menu-status { margin: 0; font-size: 14px; color: var(--ink); font-weight: 600; }
 
 /* Tracks are capped rather than left to stretch, and the grid is centred: with
    three games a 1fr grid stretches them across the whole width and leaves a bald
@@ -342,10 +389,10 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 .game-tile:hover:not(.locked) {
   transform: translateY(-3px);
-  border-color: var(--gold);
+  border-color: var(--accent);
   box-shadow: 0 12px 24px rgba(0,0,0,.3);
 }
-.game-tile:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.game-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
 /* The box art sits in a 3:4 well, the shape a card game's box photographs as.
    Cover-fit so a wrong-shaped scan crops rather than distorting. */
@@ -374,7 +421,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    nested inside the tile's own. */
 .game-cta {
   align-self: stretch; text-align: center;
-  background: var(--gold); color: var(--crimson);
+  background: var(--accent); color: var(--accent-ink);
   font-size: 13px; font-weight: 700;
   border-radius: 9px; padding: 8px 10px;
 }
@@ -489,8 +536,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 .table { display: flex; flex-direction: column; height: 100dvh; }
 
+/* Wraps rather than overflowing. Monopoly's topbar carries a language toggle as
+   well as the code, the banner and three buttons, which is 8px too wide for a
+   390px phone — and an overflowing topbar pushes the leave button off the edge of
+   the screen rather than just looking tight. */
 .topbar {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; row-gap: 6px;
   padding: 10px 14px; border-bottom: 1px solid var(--line);
 }
 .pill {
@@ -904,7 +955,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .alter-pos {
   position: absolute; top: 4px; left: 4px;
   font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  background: var(--crimson); color: var(--paper);
+  background: var(--brand); color: var(--ink);
   border-radius: 999px; padding: 2px 6px;
 }
 
@@ -934,7 +985,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
    visibility toggle. */
 .lang-toggle { display: flex; gap: 4px; flex: none; }
 .lang {
-  font: inherit; font-size: 12px; font-weight: 700;
+  font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap;
   /* Full-contrast ink even when unselected: the gold fill already says which is
      chosen, and grey on paper turns Burmese diacritics to mush at this size. */
   color: var(--ink); background: var(--bg-soft);
@@ -946,8 +997,12 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 }
 /* And 12px is simply too small for those marks to resolve into letters at all —
    the label has to be bigger than the Latin one to be equally readable. */
-.lang[lang="my"] { font-size: 15px; line-height: 1.5; }
-.lang.on { color: var(--ink); border-color: var(--gold); background: var(--gold); }
+/* Not bold, and that is the fix rather than the taste: no Myanmar font here ships
+   a bold face, so the browser synthesises one by smearing each glyph sideways —
+   which welds a stack of diacritics into a blot. Legible weight beats matching the
+   Latin pill's weight. */
+.lang[lang="my"] { font-size: 15px; line-height: 1.5; font-weight: 500; }
+.lang.on { color: var(--accent-ink); border-color: var(--accent); background: var(--accent); }
 .lang:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* A real card beats a glyph for "which one is this in my hand" — but only if it
@@ -1169,6 +1224,24 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
     width: 300px; height: auto;
     border-top: 0; border-left: 1px solid var(--line);
   }
+
+  /* Monopoly stacks the players above the log in one column down the side. The
+     board is square, so its size is whatever the *shorter* axis allows — and a
+     seat strip across the top was costing it 130px of height for a row that had
+     width to spare. One column beside it gives that back to the board, which is
+     the thing people are trying to read. */
+  .side-panel {
+    display: flex; flex-direction: column; min-height: 0;
+    width: 300px; flex: none;
+    border-left: 1px solid var(--line);
+  }
+  .side-panel .seats {
+    flex: none; flex-direction: column; overflow-x: visible;
+    padding: 10px; gap: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .side-panel .seat { min-width: 0; }
+  .side-panel .log-panel { flex: 1; width: auto; border-left: 0; }
   /* Collapsed sideways, the header would be a 300px empty bar, so shrink to a
      narrow spine instead and stand the label on its end. */
   .log-panel.collapsed { width: auto; }
@@ -1177,4 +1250,295 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
     gap: 12px; padding: 12px 8px; border-bottom: 0;
   }
   .log-panel.collapsed .log-head strong { writing-mode: vertical-rl; }
+}
+
+/* ─────────────────────────── monopoly: the board ───────────────────────────
+   Proportioned like a real board rather than as eleven equal cells: the corners
+   are wider than the edge squares, which is what buys the room for a name, a
+   price and a colour band to all be legible at once. Eleven equal cells was the
+   first version, and the report on it was the honest one — the text was too
+   small to read.
+
+   Two consequences fall out of the proportions:
+
+     * The side columns are wider than they are tall, so their text runs along
+       the long axis. That is `writing-mode`, not a transform: a rotated box
+       keeps the width it was given and wraps in the wrong direction, while
+       vertical writing mode sizes itself correctly and lets a name use the whole
+       square.
+     * The colour band sits on the *outer* edge of each square, the way it is
+       printed — which means four rules keyed off data-side rather than one.
+
+   Positions and sides come from gridPos() in games/monopoly/index.js: the
+   geometry is arithmetic, and forty hand-written positions is forty chances to
+   be wrong. */
+
+.board-wrap {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  padding: 10px; overflow: hidden;
+  container-type: size;
+  /* One square's worth of board, and the unit every size inside the board is a
+     share of — so the whole thing scales as one piece.
+
+     Declared here rather than on .board, and that is the fix for a real bug: the
+     dice live in .board-centre, which is .board's *sibling*, so a variable set on
+     .board was not in scope for them and every die came out zero-sized. */
+  --board-size: min(860px, 97cqmin);
+  --sq: calc(var(--board-size) / 11);
+}
+.board-wrap > * { grid-area: 1 / 1; }
+
+.board {
+  position: relative;
+  /* cqmin, not cqw: a board stretched to fill a widescreen window would put its
+     top row a screenful from its bottom one. */
+  width: var(--board-size); height: var(--board-size);
+  display: grid;
+  /* The classic ratio: a corner is a little over one and a half edge squares. */
+  grid-template-columns: 1.55fr repeat(9, 1fr) 1.55fr;
+  grid-template-rows: 1.55fr repeat(9, 1fr) 1.55fr;
+  gap: 2px;
+  background: var(--bg);
+  border: 2px solid rgb(var(--scrim-rgb) / .55);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+/* One square. A button because it is one: tapping it opens the card that carries
+   the full name and the rent. */
+.tile {
+  position: relative; overflow: hidden;
+  background: var(--surface); color: var(--surface-ink);
+  border: 0; border-radius: 3px;
+  padding: 0; font: inherit;
+  cursor: pointer;
+  display: grid;
+  transition: box-shadow .12s ease;
+}
+.tile:hover { box-shadow: inset 0 0 0 2px var(--accent); z-index: 3; }
+.tile.corner { background: var(--surface-soft); }
+
+/* The body is everything that reads as text, and the piece that turns on the
+   side columns. */
+.tile-body {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(var(--sq) * .04);
+  padding: calc(var(--sq) * .06);
+  text-align: center;
+  min-width: 0; min-height: 0;
+}
+.tile[data-side="left"] .tile-body,
+.tile[data-side="right"] .tile-body {
+  /* Text along the long axis. vertical-rl reads top to bottom; the left column
+     is turned the other way up so both sides face outward, as printed. */
+  writing-mode: vertical-rl;
+}
+.tile[data-side="left"] .tile-body { transform: rotate(180deg); }
+
+/* Room for the band, on whichever edge is the outer one.
+
+   The left column asks for it on the *right*, which is not a typo: that body is
+   turned through 180 degrees, so its padding lands on the opposite side from the
+   one named here. Padding the physical left put the gap on the inner edge and
+   the band ate the first letter of every name — "Mawlamyine" came out as
+   "awlamyin". */
+.tile[data-side="top"]    .tile-body { padding-top: calc(var(--sq) * .3); }
+.tile[data-side="bottom"] .tile-body { padding-bottom: calc(var(--sq) * .3); }
+.tile[data-side="left"]   .tile-body { padding-right: calc(var(--sq) * .3); }
+.tile[data-side="right"]  .tile-body { padding-right: calc(var(--sq) * .3); }
+
+/* A corner reads straight, whichever side the arithmetic filed it under — the
+   top-left one comes out as "left" and was rendered on its side. And it has no
+   band, so it keeps none of the room left for one: after the per-side rules
+   above, not before, or the bottom corners keep that padding and clip their own
+   label. */
+.tile.corner .tile-body {
+  writing-mode: horizontal-tb;
+  transform: none;
+  padding: calc(var(--sq) * .07);
+}
+
+.tile-name {
+  font-weight: 700;
+  /* A share of the board so the whole thing scales together, with a floor: forty
+     squares across a phone puts a square at 33px, and .19 of that is six pixels.
+     Below the floor the board is a map and the names are read by tapping a
+     square, which is what the detail card is for. */
+  font-size: max(8px, calc(var(--sq) * .185));
+  line-height: 1.1;
+  letter-spacing: -.01em;
+  /* Three lines at most, then cut: the detail card carries the full name, and a
+     square that grows to fit "Yangon Central Station" breaks the grid. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Burmese needs more room per line than Latin at the same size. */
+.tile-name:lang(my) { font-size: max(8px, calc(var(--sq) * .165)); line-height: 1.35; }
+
+.tile-price {
+  font-size: max(8px, calc(var(--sq) * .16));
+  font-weight: 800;
+  padding: 0 calc(var(--sq) * .07);
+  border-radius: 999px;
+  background: rgb(var(--scrim-rgb) / .08);
+  color: var(--muted-ink);
+  white-space: nowrap;
+}
+
+/* The glyph a special square is known by — the chest, the question mark, the
+   plane. A property has its colour band instead and gets none. */
+.tile-icon { font-size: calc(var(--sq) * .32); line-height: 1; }
+/* A station or a utility carries a band, a name, a price and an icon — one thing
+   too many for an edge square, and it was the name that lost. The icon gives way
+   instead, and the name clamps to two lines rather than three. */
+.tile:not(.corner) .tile-icon { font-size: calc(var(--sq) * .23); }
+.tile:not(.corner) .tile-name { -webkit-line-clamp: 2; }
+/* The side squares are wider than they are tall, and their text runs down the
+   long axis — so a "line" there is a column, and there is room for three of them.
+   Two truncated "Mawlamyine" and "Electricity Board"; three do not. */
+.tile[data-side="left"]:not(.corner) .tile-name,
+.tile[data-side="right"]:not(.corner) .tile-name { -webkit-line-clamp: 3; }
+.tile.corner .tile-icon { font-size: calc(var(--sq) * .45); }
+.tile.corner .tile-name { font-size: calc(var(--sq) * .17); }
+
+/* ─── the colour band, on the outer edge ─── */
+
+.tile-band { position: absolute; background: var(--band, transparent); }
+.tile[data-side="top"]    .tile-band { inset: 0 0 auto 0; height: 24%; }
+.tile[data-side="bottom"] .tile-band { inset: auto 0 0 0; height: 24%; }
+.tile[data-side="left"]   .tile-band { inset: 0 auto 0 0; width: 24%; }
+.tile[data-side="right"]  .tile-band { inset: 0 0 0 auto; width: 24%; }
+.tile-band::after {
+  content: ""; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 1px rgb(var(--scrim-rgb) / .3);
+}
+
+.tile[data-group="brown"]     { --band: var(--grp-brown); }
+.tile[data-group="lightblue"] { --band: var(--grp-lightblue); }
+.tile[data-group="pink"]      { --band: var(--grp-pink); }
+.tile[data-group="orange"]    { --band: var(--grp-orange); }
+.tile[data-group="red"]       { --band: var(--grp-red); }
+.tile[data-group="yellow"]    { --band: var(--grp-yellow); }
+.tile[data-group="green"]     { --band: var(--grp-green); }
+.tile[data-group="darkblue"]  { --band: var(--grp-darkblue); }
+/* Stations and utilities belong to no colour set, but they are still bought and
+   still charge rent — so they get a band of their own rather than reading as
+   scenery. */
+.tile[data-kind="station"] { --band: #6b7a8f; }
+.tile[data-kind="utility"] { --band: #4a9db5; }
+
+/* ─── ownership ─── */
+
+/* A deed is marked by tinting the whole square in the owner's colour and putting
+   a solid edge on the inner side. "Who owns this" has to be answerable at a
+   glance from across a table, and a thin bar along one edge was not.
+   --own is set from JS to the owner's token colour. */
+.tile.owned { background: color-mix(in srgb, var(--own) 26%, var(--surface)); }
+.tile.owned::after { content: ""; position: absolute; background: var(--own); }
+.tile[data-side="top"].owned::after    { inset: auto 0 0 0; height: 6%; }
+.tile[data-side="bottom"].owned::after { inset: 0 0 auto 0; height: 6%; }
+.tile[data-side="left"].owned::after   { inset: 0 0 0 auto; width: 6%; }
+.tile[data-side="right"].owned::after  { inset: 0 auto 0 0; width: 6%; }
+.tile.mine { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* ─── tokens ─── */
+
+/* Standing on the square, over the top of everything rather than pushing the
+   name out of the way. */
+.tile-tokens {
+  position: absolute; inset: 0;
+  display: flex; flex-wrap: wrap; align-content: center; justify-content: center;
+  gap: 2px; pointer-events: none;
+}
+.token {
+  width: calc(var(--sq) * .3); height: calc(var(--sq) * .3);
+  border-radius: 50%;
+  border: 2px solid rgb(var(--surface-rgb) / .95);
+  box-shadow: 0 1px 3px rgb(var(--scrim-rgb) / .6);
+}
+.token.me { border-color: var(--accent); }
+
+/* ─── the middle ─── */
+
+/* Inside the ring rather than beside it: it is where a real board keeps its
+   dice, and it is the only space a forty-square ring leaves.
+
+   Positioned, and above the board — without this the squares swallow the clicks,
+   because .board and its tiles are positioned and so paint over a static sibling
+   however late that sibling comes in the markup. The symptom is a Roll button
+   that is visible, enabled, and does nothing. */
+.board-centre {
+  position: relative; z-index: 1;
+  width: min(72%, 520px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 8px; text-align: center;
+  pointer-events: none;
+}
+.board-centre > * { pointer-events: auto; }
+
+.dice { display: flex; align-items: center; gap: 10px; min-height: 1em; }
+/* Real pips on a paper-white die, rather than the ⚀-⚅ glyphs, which render at
+   wildly different weights across platforms and are unreadable when small. */
+.die {
+  width: calc(var(--sq) * .95); height: calc(var(--sq) * .95);
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: calc(var(--sq) * .04); padding: calc(var(--sq) * .13);
+  background: var(--surface);
+  border-radius: calc(var(--sq) * .16);
+  box-shadow: 0 calc(var(--sq) * .05) calc(var(--sq) * .12) rgb(var(--scrim-rgb) / .5);
+}
+.die i {
+  border-radius: 50%; background: var(--surface-ink);
+  width: 100%; height: 100%;
+}
+.die-total {
+  font-weight: 800; font-size: calc(var(--sq) * .3);
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 999px; padding: calc(var(--sq) * .04) calc(var(--sq) * .22);
+}
+.board-status { margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+.board-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+/* A token pip beside a name in the seat strip, so "whose piece is the red one"
+   is answered without hovering it. */
+.seat-pip {
+  width: 11px; height: 11px; flex: none;
+  border-radius: 50%; border: 1px solid rgb(var(--surface-rgb) / .8);
+}
+
+/* The detail card's rows: price, rent, owner. */
+.tile-detail {
+  margin: 0; display: grid; grid-template-columns: auto 1fr;
+  gap: 5px 16px; text-align: left; font-size: 14px;
+}
+.tile-detail dt { color: var(--muted); }
+.tile-detail dd { margin: 0; font-weight: 700; }
+
+/* What the slice does not have yet, called out in the rules sheet rather than
+   left for a player to discover by landing on a square that does nothing. */
+.rules-slice {
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px dashed var(--line); border-radius: 10px;
+  background: var(--bg-soft);
+}
+.rules-slice h3 { margin-top: 0; }
+
+/* On a phone the board is the whole screen. Past this size a square cannot carry
+   a price as well as a name, so the price goes and the detail card becomes the
+   way to ask — which is one tap, and was always how the rent was going to be
+   read anyway. */
+@media (max-width: 620px) {
+  .board-wrap { --board-size: min(460px, 98cqmin); }
+  .tile-price { display: none; }
+  .tile-name { -webkit-line-clamp: 2; }
+  /* The board takes what it needs rather than all the spare height: on a phone it
+     is limited by width, and flex: 1 left a screenful of nothing between the
+     board and the players.
+     Sized explicitly rather than by `flex: none`, which collapsed it to nothing:
+     container-type: size makes an element's size independent of its contents, so
+     it has to be given one. Square, because the board is. */
+  .board-wrap { flex: none; width: 100%; aspect-ratio: 1; }
+  .board-centre { width: min(78%, 320px); gap: 10px; }
+  .board-status { font-size: 12px; }
 }

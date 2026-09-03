@@ -9,11 +9,14 @@
 package kittens
 
 import (
-	"math/rand"
+	"bytes"
+	"encoding/gob"
+	"errors"
 	"time"
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/kittens/game"
+	"boardgame/kittens/internal/prng"
 	"boardgame/kittens/internal/view"
 )
 
@@ -26,7 +29,7 @@ const NopeWindow = 20 * time.Second
 // Game is one Exploding Kittens table.
 type Game struct {
 	state   *game.State
-	rng     *rand.Rand
+	rng     *prng.Source
 	variant game.Variant
 }
 
@@ -35,9 +38,9 @@ type Game struct {
 // The variant is fixed when the room is made rather than at the deal, because
 // the lobby has to know the seat cap before anybody sits down — the expansion
 // seats six, the Original Edition five.
-func New(rng *rand.Rand, variant game.Variant) core.Game {
+func New(rng *prng.Source, variant game.Variant) core.Game {
 	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		rng = prng.NewSeeded()
 	}
 	if variant == "" {
 		variant = game.Original
@@ -226,4 +229,41 @@ func (g *Game) View(sh core.Shell) any {
 	v.Public = sh.Public
 	v.Game = sh.Game
 	return v
+}
+
+// ─────────────────────────────────────────────────────── saving and resuming
+
+// snapshot is what gets written down. The variant travels with the state because
+// it decides the deck and the seat cap, and a room reloaded as the wrong edition
+// would deal five kittens into a six-player table.
+type snapshot struct {
+	State   *game.State
+	Variant game.Variant
+}
+
+func (g *Game) Snapshot() ([]byte, error) {
+	if g.state == nil {
+		return nil, nil // nothing dealt: the room's own lobby is the whole state
+	}
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(snapshot{State: g.state, Variant: g.variant}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (g *Game) Restore(data []byte) error {
+	if len(data) == 0 {
+		g.state = nil
+		return nil
+	}
+	var s snapshot
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&s); err != nil {
+		return err
+	}
+	if s.State == nil || s.State.RNG == nil {
+		return errors.New("kittens: snapshot has no state or no dice")
+	}
+	g.state, g.variant, g.rng = s.State, s.Variant, s.State.RNG
+	return nil
 }

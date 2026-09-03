@@ -2,6 +2,159 @@
 
 ## Done
 
+- ~~The Monopoly board was too small to read~~ — reported with a richup.io
+  screenshot to copy the layout from. The first board was eleven equal cells,
+  which is the wrong shape: a real board's corners are wider than its edge
+  squares, and that difference is exactly the room a name, a price and a colour
+  band need to all be legible at once. Now `1.55fr repeat(9, 1fr) 1.55fr` on both
+  axes, and every size inside a square is a share of one square (`--sq`) so the
+  whole thing scales as one piece.
+
+  What else changed, all of it following the reference:
+
+  - **The colour band moved to the outer edge**, where it is printed, which means
+    four rules keyed off `data-side` rather than one.
+  - **Side columns run their text along the long axis.** `writing-mode`, not a
+    transform: a rotated box keeps the width it was given and wraps in the wrong
+    direction, while vertical writing mode sizes itself and lets a name use the
+    whole square.
+  - **The players moved into a column beside the board.** The board is square, so
+    its size is decided by the shorter axis — a full-width seat strip above it was
+    spending 130px of height on a row that had width going spare. The board went
+    from 630px to 715px on the same window.
+  - **Real dice**, drawn as pips on a three-by-three grid. The ⚀-⚅ characters
+    come out at wildly different weights across platforms and are illegible small.
+  - **Ownership tints the whole square** in the owner's colour with a solid edge
+    on the inner side. "Who owns this" has to be answerable from across a table,
+    and a thin bar along one edge was not.
+  - Specials carry an icon (chest, plane, question mark); stations and utilities
+    get a band of their own, because they are bought and charge rent rather than
+    being scenery.
+
+  Four CSS traps, each of which looked like something else:
+
+  - `--sq` was declared on `.board`, but the dice live in `.board-centre`, which
+    is its **sibling** — so the variable was out of scope and every die rendered
+    at zero size. It lives on the wrapper now.
+  - The left column's body is turned through 180°, so the padding leaving room for
+    its band landed on the opposite side. "Mawlamyine" came out as "awlamyin".
+  - `.tile.corner` came *before* the per-side padding rules at equal specificity,
+    so the bottom corners kept the band's padding and clipped their own label.
+  - `container-type: size` makes an element's size independent of its contents, so
+    `flex: none` on the phone collapsed the whole board to nothing. It needs an
+    explicit size — square, because the board is.
+
+  `monopoly.js` is 17 checks now, including the ones this was for: a corner is
+  wider than an edge square, names render at 11px or more in a stated window, no
+  name is clipped to nothing, and the side columns really do set their text
+  sideways. Verified by mutation — putting the grid back to equal cells fails it
+  with "a corner is 70px against an edge square's 70px".
+
+- ~~Serializable state, and games that survive a restart~~ — step 2 of the
+  Monopoly plan, and the one that decided whether any of it was worth shipping: a
+  two-hour session on a server where a deploy ends every game is a game people
+  abandon.
+
+  **The randomness layer first.** `internal/prng` replaces `math/rand`
+  everywhere a game deals from. Counter-based, so the whole state is a seed and a
+  count: it marshals, and a bug report is two numbers rather than an opaque blob.
+  Deliberately *not* `math/rand/v2`'s PCG, which also marshals but only as a
+  sixteen-byte blob — that gives up the reproduce-from-a-report half for nothing.
+  Room codes and seat tokens stay on `crypto/rand`; they are credentials, not
+  dice.
+
+  **Snapshots are gob, not JSON**, and that turned out to be load-bearing rather
+  than a preference. A game's json tags describe the *client* payload: Exploding
+  Kittens hides a card's `Type` from the wire, so a JSON snapshot restores a deck
+  of typeless cards and the engine deals them happily — wrong cards several turns
+  later, with nothing to point at. Each engine's `State` now carries its
+  `*prng.Source` as an exported field tagged `json:"-"`: exported so gob saves it,
+  hidden so it never reaches a browser.
+
+  **Checkpoints, not a farewell note.** The first version saved only on a clean
+  shutdown, and the browser test could not make that fire at all — Node cannot
+  send a real SIGINT on Windows, every signal maps to `TerminateProcess`. Which
+  is the more important point: a crash and a power cut take no signal either. So
+  the state file is written every 30s (`-state`, `-state-every`) and a hard kill
+  costs at most that.
+
+  **Nothing new on the client.** Players come back through the token path that
+  already handles a phone going to sleep. One limitation worth knowing: private
+  log lines ("You drew Nope") were never in the shared log, so they do not
+  survive a reconnect — restart or not.
+
+  Two bugs found on the way, both by tests rather than by reading:
+
+  - Monopoly reported the rent or tax *owed* rather than what was actually paid,
+    so a player who could not cover it produced a log line claiming K200,000 left
+    somebody holding K43,000 — and broke any accounting done from the events,
+    which is how the conservation fuzz test caught it.
+  - `TestRandomGamesFinishAndConserveMoney` was vacuous: it demanded a winner and
+    logged "no winner in 4000 moves" for all forty seeds, so the money check under
+    it never ran once. The slice genuinely cannot be won — unimproved rents are
+    tiny against a K200,000 lap, so everybody gets richer — which is now its own
+    test, and a canary that fails the day building lands.
+
+- ~~Monopoly Myanmar, step 1: a playable slice~~ — roll, move, buy, pay rent,
+  taxes, bankruptcy, and a winner when one player is left. Scaffolded with
+  `cmd/scaffold` (which needed a fix first: its catalogue anchors were LF-only
+  and this checkout is CRLF, so it refused to patch a file it was looking
+  straight at — it would have failed for every future game here).
+
+  **The board is the original's shape with Myanmar on it.** Which square is a
+  property, where the corners and taxes fall, and what everything costs are the
+  original's, because those numbers are balanced and changing them changes the
+  game rather than the theme. The places are Myanmar's, ordered the way the
+  original orders its streets — Myeik and Dawei in the first corner, Bagan and
+  Shwedagon in the last — and prices are the printed dollars × 1,000, so the
+  cheapest square is K60,000 and everybody starts with K1,500,000. Every square
+  carries both names, from the server: what a square is called is game data, and
+  the whole table has to be looking at the same board.
+
+  **The board is drawn from arithmetic, not a table.** `gridPos(i)` puts square
+  *i* on an 11×11 grid; forty hand-written positions would be forty chances to be
+  wrong, and the mistake looks like a rendering fault. `web/testing/monopoly.js`
+  checks the geometry directly — forty distinct grid cells, nothing inside the
+  ring, and the four corners in the right ones.
+
+  **What is not in yet**, listed at the foot of `engine.go` and in the rules sheet
+  rather than left to be discovered: Chance and Community Chest do nothing, the
+  jail corner does not hold you, and there are no houses, auctions, mortgages or
+  trades. Auctions have a home waiting — `core.Game`'s `Window()` is already a
+  timed window any player can act into, which is what an auction is.
+
+  **The slice cannot be won, and that is the board rather than a bug.** Unimproved
+  rents are K2,000–K50,000 against K200,000 a lap, so everybody gets richer and
+  nobody breaks: 1,500 moves took a three-player table from K4.5m to K33.9m. The
+  first version of the fuzz test asserted a winner, logged "no winner" for all
+  forty seeds, and so never once ran the money-conservation check underneath it.
+  It now checks the invariants on every step and there is a second test that
+  states the no-bankruptcy finding outright — it will fail when building lands,
+  which is exactly when somebody should delete it.
+
+  Four defects found on the way, three of them pre-existing:
+
+  - **`--gold`, `--crimson` and `--paper` were undefined**, in eleven rules left
+    over from the token rename. An invalid `var()` computes as `unset`, so they
+    failed quietly: the selected language pill had no fill at all, and "Play now"
+    on the menu tiles had no background. Repointed at roles (`--accent`,
+    `--accent-ink`, `--ink`) rather than renamed blindly, per the warning in the
+    web-client section below.
+  - **Synthetic bold destroys Myanmar text.** No Myanmar font here ships a bold
+    face, so the browser fakes one by smearing each glyph sideways and a stack of
+    diacritics welds into a blot. The language pill and the board's corner squares
+    now drop to weight 500 in Burmese.
+  - **A `position: relative` sibling paints over a static one** whatever the
+    markup order, so the board swallowed every click meant for the Roll button
+    underneath it. The symptom was a button that was visible, enabled, and did
+    nothing.
+  - **The log kept the language it was written in.** It is built by appending only
+    what is new, so switching mid-game left a Burmese board over an English
+    play-by-play. `resetFeed()` before the re-render rebuilds it from the entries
+    the server still holds in full.
+
+  Next: persistence, before sessions get long enough to be worth losing.
+
 - ~~The hand covered the table, and the Nope window sat on the hand~~ — three
   layout changes, all reported from real play.
 

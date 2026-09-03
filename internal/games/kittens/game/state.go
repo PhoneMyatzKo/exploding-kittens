@@ -1,6 +1,6 @@
 package game
 
-import "math/rand"
+import "boardgame/kittens/internal/prng"
 
 // Phase drives what each client is allowed to do. Every transition is decided by
 // the engine; clients only render the affordances a phase implies.
@@ -117,7 +117,12 @@ type State struct {
 
 	WinnerID string
 
-	rng *rand.Rand
+	// RNG is the game's own dice and shuffles. Exported for one reason: it is
+	// state, and a game that cannot write its randomness down cannot be saved and
+	// resumed. Kept off the wire with json:"-" — gob, which is what snapshots use,
+	// ignores the tag and saves it. Nothing outside this package should draw from
+	// it; it is here to be persisted, not to be used.
+	RNG *prng.Source `json:"-"`
 }
 
 // alterCount is how many cards Alter the Future exposes, capped by the deck.

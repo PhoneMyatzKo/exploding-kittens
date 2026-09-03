@@ -12,7 +12,7 @@
 
 import { $, markScrollable } from "../../core/dom.js";
 import { groupByCategory } from "../../core/sort.js";
-import { logOpen, setStoredLogOpen } from "../../core/store.js";
+import { logOpen, setStoredLogOpen, storedLang, setStoredLang } from "../../core/store.js";
 import { register as registerSound, setTrack, playSfx } from "../../core/sound.js";
 import { openModal, closeModal, modalKind } from "../../core/modal.js";
 import { renderLog, logPrivate, freshEvents, scrollLogToEnd } from "../../core/feed.js";
@@ -189,10 +189,12 @@ function paintRulesArt() {
 // person reading the rules aloud is not always the person who set the server up.
 // Only the how-to-play sheet is translated; the table itself is mostly card
 // names and numbers.
-const rulesLang = () => (localStorage.getItem("ek:lang") === "my" ? "my" : "en");
+// The choice is the shell's to remember: Monopoly names its board in the same
+// two languages, and a table that reads Burmese should pick it once.
+const rulesLang = storedLang;
 
 function setRulesLang(lang) {
-  localStorage.setItem("ek:lang", lang);
+  setStoredLang(lang);
   for (const s of document.querySelectorAll(".rules-lang")) {
     s.hidden = s.dataset.lang !== lang;
   }

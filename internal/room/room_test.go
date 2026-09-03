@@ -2,13 +2,13 @@ package room
 
 import (
 	"encoding/json"
-	"math/rand"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"boardgame/kittens/internal/games/kittens"
+	"boardgame/kittens/internal/prng"
 	"boardgame/kittens/internal/view"
 	"boardgame/kittens/static"
 )
@@ -274,7 +274,7 @@ func TestRoomCapacity(t *testing.T) {
 func TestFullGameThroughTheRoom(t *testing.T) {
 	h := newHarness(t, 3)
 	h.start(t)
-	rng := rand.New(rand.NewSource(42))
+	rng := prng.New(uint64(42))
 
 	for step := 0; step < 600; step++ {
 		if v, _ := h.recs[0].snapshot(); v.Phase == "game_over" {
@@ -320,7 +320,7 @@ func mustPhase(h *harness) string {
 func TestNopeWindowLengthReachesClients(t *testing.T) {
 	h := newHarness(t, 3)
 	h.start(t)
-	rng := rand.New(rand.NewSource(11))
+	rng := prng.New(uint64(11))
 
 	for step := 0; step < 400; step++ {
 		v, _ := h.recs[0].snapshot()
@@ -347,7 +347,7 @@ func TestNopeWindowLengthReachesClients(t *testing.T) {
 }
 
 // nextMove picks a legal action for whoever the redacted views say must act.
-func nextMove(h *harness, rng *rand.Rand) (int, ClientMsg, bool) {
+func nextMove(h *harness, rng *prng.Source) (int, ClientMsg, bool) {
 	for i, rec := range h.recs {
 		v, _ := rec.snapshot()
 		if v == nil {
@@ -384,7 +384,7 @@ func nextMove(h *harness, rng *rand.Rand) (int, ClientMsg, bool) {
 	return 0, ClientMsg{}, false
 }
 
-func somePlay(v *view.View, rng *rand.Rand) (ClientMsg, bool) {
+func somePlay(v *view.View, rng *prng.Source) (ClientMsg, bool) {
 	var others []string
 	for _, s := range v.Seats {
 		if s.Alive && s.ID != v.Me.ID {
@@ -428,7 +428,7 @@ func somePlay(v *view.View, rng *rand.Rand) (ClientMsg, bool) {
 // the tests below can start from a finished game.
 func driveToGameOver(t *testing.T, h *harness, seed int64) {
 	t.Helper()
-	rng := rand.New(rand.NewSource(seed))
+	rng := prng.New(uint64(seed))
 	for step := 0; step < 600; step++ {
 		if v, _ := h.recs[0].snapshot(); v.Phase == "game_over" {
 			return

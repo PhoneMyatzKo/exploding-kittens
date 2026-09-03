@@ -83,9 +83,15 @@ type Entry struct {
 	// Count, Points and Colour are UNO's: how many cards a draw moved, what a
 	// round scored, and which colour is in force. Omitted everywhere else, so a
 	// game that has no use for them costs nothing.
-	Count   int    `json:"count,omitempty"`
-	Points  int    `json:"points,omitempty"`
-	Colour  string `json:"colour,omitempty"`
+	Count  int    `json:"count,omitempty"`
+	Points int    `json:"points,omitempty"`
+	Colour string `json:"colour,omitempty"`
+	// Tile and Dice are Monopoly's: which square an entry is about, and what was
+	// thrown. A pointer rather than an int because square zero is GO — a real
+	// answer that `omitempty` would drop — and a slice rather than [2]int because
+	// a fixed-size array is never empty and would go out on every entry.
+	Tile    *int   `json:"tile,omitempty"`
+	Dice    []int  `json:"dice,omitempty"`
 	OnlyFor string `json:"-"`
 }
 
@@ -155,6 +161,22 @@ type Game interface {
 	// View builds the payload one client receives, lobby included: only the game
 	// knows which of its fields its own renderer needs.
 	View(sh Shell) any
+
+	// Snapshot and Restore are how a game survives the process it is running in.
+	// A room writes one on shutdown and hands it back on start; between those two
+	// points the players' browsers have been sitting on a dropped socket, and they
+	// reconnect with the token they already hold.
+	//
+	// Snapshot returns nil for a game that has not been dealt — there is nothing
+	// to save but the lobby, and the room owns that. Restore(nil) is likewise a
+	// no-op, so a saved lobby comes back as a lobby.
+	//
+	// The bytes are opaque to the room and are only ever given back to the same
+	// game. Gob rather than JSON, because a game's own state is Go-to-Go and its
+	// json tags belong to the *client* payload: Exploding Kittens hides a card's
+	// type from the wire, and a JSON snapshot would lose every card's identity.
+	Snapshot() ([]byte, error)
+	Restore(data []byte) error
 }
 
 // Errors a Game may return that the room recognises rather than merely forwards.

@@ -11,6 +11,7 @@ import (
 
 	"boardgame/kittens/internal/games"
 	"boardgame/kittens/internal/games/kittens/game"
+	monopoly "boardgame/kittens/internal/games/monopoly/game"
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/ws"
 	"boardgame/kittens/static"
@@ -91,6 +92,22 @@ func New(mgr *room.Manager) http.Handler {
 			// Every kind in the deck, so the rules sheet can show a real card
 			// instead of an emoji — and only the cards this deck contains.
 			"kinds": build(game.AllTypes(variant)),
+		})
+	})
+
+	// Monopoly's board. Served once at mount rather than sent with every state:
+	// forty squares of names and prices never change during a game, and repeating
+	// them on each roll would be most of the payload. Both languages go out
+	// together so switching between them costs no round trip.
+	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
+		if slug := r.URL.Query().Get("game"); slug != games.Monopoly && slug != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "that game has no board"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"tiles":        monopoly.Board(),
+			"startingCash": monopoly.StartingCash,
+			"passGo":       monopoly.PassGo,
 		})
 	})
 
