@@ -2,6 +2,128 @@
 
 ## Done
 
+- ~~Houses and hotels~~ — step 4, and the one that makes the game reliably
+  finishable. `internal/games/monopoly/game/build.go`.
+
+  **The measurement is the point.** `TestGamesReachAWinner` reports the rate over
+  forty seeds. With the fuzz driver's build branch present but never taken, 7 of
+  40 finish; with it taken, **23 of 40**, averaging 305 moves. Step 3 measured 6
+  of 40 on a driver without the branch at all — the 7 is the honest comparison,
+  since merely having the branch consumes a different amount of randomness. Three
+  houses on Kalaw takes its rent from K28,000 to K550,000, against a lap that pays
+  K200,000; that is the whole mechanism.
+
+  **Two rules do all the work**, and both are the original's. You may only build
+  on a colour set you hold *complete* — which is why anybody trades, and why a set
+  nobody can finish is a set nobody improves. And you must build **evenly**: no
+  second house anywhere in a set until every square in it has one, and the same in
+  reverse when selling. Without the second rule the strategy collapses into
+  stacking a hotel on whichever square people land on most.
+
+  **The bank's stock is finite and that is a rule**, not an implementation detail:
+  32 houses and 12 hotels, so buying up the cheap sets to starve everybody else of
+  building material is a real move. It is *counted* from `State.Houses` rather
+  than stored beside it — a second copy of a derivable number is a second copy to
+  get wrong, and this one would go wrong silently as a table that slowly grows
+  more houses than the box holds. A hotel is a fifth level rather than a flag,
+  because `Rent[5]` is where its figure already lived; building one puts its four
+  houses back on the shelf, and selling one takes four off, which the bank has to
+  be able to supply.
+
+  **Selling is in.** Half price, evenly in reverse, which gives somebody who has
+  over-built a way to raise cash instead of going out. Mortgaging a bare deed is
+  still not.
+
+  **The client renders the server's answer, never its own.** The view sends
+  `me.canBuild` and `me.canSell` as lists of squares and the client renders
+  exactly them, because the even-build rule and the bank's stock are the server's
+  to work out and a client that decided for itself would be a second copy of the
+  rule that could disagree. What the client *does* work out is the *reason* a
+  square has no button ("you need the whole colour set", "build evenly", "the bank
+  has none left") — a reason is presentation; the refusal already happened by the
+  square being left out of the list.
+
+  The controls live on the square's detail card rather than in the board's middle:
+  you build on a square, so they belong on that square's card, and they cost no
+  room at all until somebody taps a deed. The card now shows the full rent ladder
+  with the level in force bracketed, because "what is this worth if I finish the
+  set" is the question building exists to answer.
+
+  **Two browser checks, and both were mutation-tested.** `tryToBuild` drives
+  building blind — it opens the towns a player owns and presses whatever is there,
+  so it catches a button the server would refuse *and* a missing one on a square
+  it would accept. `buildOfferedOnSomebodyElses` walks the other direction and
+  reports how many squares it looked at, so it cannot pass by having found none.
+  Forcing the client to always offer Build fails both. Building itself is
+  *reported* rather than required: completing a set needs the dice to put one
+  player on both browns, likely over eighty turns but not certain.
+
+  One thing deliberately not the original's: **you may only build before you roll,
+  or while being held in jail**. The original lets you build at any moment,
+  including during somebody else's turn, which needs a rule for who gets the last
+  house when two people want it at once. Noted in the gap list at the foot of
+  `engine.go`.
+
+  The Burmese for the new rules sheet section and the five new UI strings
+  (အိမ်တန်ဖိုး, အဆောက်အအုံ, ဟိုတယ်, အညီအမျှ ဆောက်ပါ, ဘဏ်တွင် မကျန်တော့ပါ) was
+  written without a native reader, like the rest of it. Still wants a pass.
+
+- ~~ကံစမ်း and ရပ်ရွာရန်ပုံငွေ, and a jail that holds you~~ — step 3. The fifty
+  cards came as an idea list, written in Burmese, and the humour is the whole
+  point of them: the power coming back, the bus being full, a checkpoint wanting
+  a document you left at home, an aunt insisting you take her money. That is what
+  a localised edition is *for*, and the pack is written down verbatim in
+  `cards.go` with an English translation beside each one rather than a second
+  joke.
+
+  **Split by character**, the way the original splits its decks: Chance is luck
+  and movement, Community Chest is money and social life. Twenty-five each.
+
+  **The amounts were scaled ×10.** The ideas came at 1,000–20,000 kyat, which
+  reads right but is the wrong scale here: a property is K60,000–400,000 and a lap
+  pays K200,000, so a K5,000 card is three tenths of one per cent of your money.
+  At ×10 they sit between 0.7% and 13% of starting cash, which is the proportion
+  the original's $50–$200 cards have. The relative ordering of the ideas is
+  untouched.
+
+  **The cards needed jail to be real**, so that came with them. Being sent there
+  now *holds* you: on your turn you throw for a double, pay the K50,000 fine, or
+  spend a held get-out-of-jail card, and three failed throws take the fine and let
+  you out anyway. Landing on the corner the ordinary way is still just visiting.
+  Missed turns and backwards movement were also new.
+
+  **The best outcome was accidental.** `TestTheSliceHasNoBankruptcyPressure`
+  existed as a canary saying the board could not be won and would fail "the day
+  building lands". It fired the moment the cards went in: fines, card payments and
+  turns missed while the board keeps charging turned out to be enough pressure on
+  their own. It is replaced by `TestGamesReachAWinner`, which reports the rate —
+  6 of 40 seeds finish, averaging 226 moves. Houses will still help, but the game
+  is no longer unwinnable.
+
+  Two real bugs found on the way, both from one cause: `pay()` moved money *and*
+  ended the turn. Split into `transfer()` and an explicit `endTurn()` because of
+  it —
+
+  - the flat-tyre card ("pay K30,000 and go back one square") never went back,
+    since paying had already passed play on;
+  - paying your way out of jail ended the turn you had just bought.
+
+  And one of my own: `advance()` walked with `s.Current + step` while also
+  assigning to `s.Current`, so the base and the offset moved together and it
+  stepped over twice as many seats as it should.
+
+  The card is shown to the **whole table**, not only to whoever drew it — at a
+  table the card is read out, and watching somebody else's luck is half the point
+  of the deck. Only the drawer gets the button. The effect line under the flavour
+  is generated from the effects rather than typed into the pack, so a card cannot
+  say one thing and do another, and it writes its numbers in Burmese numerals
+  (ကျပ် ၇၀,၀၀၀) to match the way the pack was written.
+
+  One limitation worth knowing: the language toggle is in the topbar, behind the
+  card's scrim, so it cannot be reached while a card is on screen. The card
+  rebuilds itself if the language does change, but in practice you switch between
+  cards.
+
 - ~~The Monopoly board was too small to read~~ — reported with a richup.io
   screenshot to copy the layout from. The first board was eleven equal cells,
   which is the wrong shape: a real board's corners are wider than its edge

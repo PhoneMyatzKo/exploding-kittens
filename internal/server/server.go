@@ -108,6 +108,17 @@ func New(mgr *room.Manager) http.Handler {
 			"tiles":        monopoly.Board(),
 			"startingCash": monopoly.StartingCash,
 			"passGo":       monopoly.PassGo,
+			"jailFine":     monopoly.JailFine,
+			// What the box holds. The remaining stock is in every state payload;
+			// these two are the constants it is a remainder of, so the client can
+			// say "9 of 32 left" rather than only "9".
+			"houseSupply": monopoly.HouseSupply,
+			"hotelSupply": monopoly.HotelSupply,
+			// The two decks travel with the board for the same reason: fifty cards
+			// in two languages never change during a game, and a state that
+			// carried the text of whichever card was face up would be sending the
+			// same paragraph on every roll. The state sends an index into this.
+			"cards": monopoly.Cards(),
 		})
 	})
 

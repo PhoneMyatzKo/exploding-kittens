@@ -63,7 +63,7 @@ Screenshots land in `shots/` (gitignored).
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 | `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
 | `restart.js` | A game survives the server being killed and restarted: both players' browsers reconnect on their own, land back in their own seats holding the same cards, and can carry on playing. Owns its own server on its own port, because it has to stop and start it |
-| `monopoly.js` | The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band actually painted, tokens starting on GO and moving, a square's price and rent one tap away, and the whole board reading in Burmese and staying that way across a reload |
+| `monopoly.js` | The board *and* the game. The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band painted, corners wider than the edge squares, names at 11px or more in a stated window, tokens starting on GO and moving, a price and the whole rent ladder one tap away, and the whole thing reading in Burmese across a reload. The game: buying, rent, a drawn card with its emoji, flavour line and generated effect, both ways out of jail, and building — houses drawn inside their own square, and never a build button on a square the server would refuse |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never
@@ -114,10 +114,34 @@ Three traps that have caught this harness before:
   that way in a play loop, the action stops being taken after it succeeds once —
   so the table sits on an unanswered prompt for the rest of the run and the script
   still passes, with thin coverage as the only clue. Do the action, then record it.
+- **A driver that clicks two things cannot answer a third.** `restart.js` played
+  its turns with `#deck` and `#pass-btn` only, so a draw that opened a defuse
+  placement left the table sitting on it — and since that is what got saved, the
+  *restored* game was stuck on it too and "the game can still be played" failed
+  for a reason that had nothing to do with restarting. It passed alone and failed
+  in the suite, which is what a stall of this shape looks like: intermittent, and
+  blaming the wrong feature. Any loop that drives real turns needs
+  `clearModals(players)` in it, which is what that helper is for.
 - **`offsetTop` is relative to the nearest positioned ancestor**, not to the
   scroll box an element sits in. Arithmetic on it to decide "can this be
   scrolled to" quietly measures nothing. Scroll to the element and ask the
   browser where it ended up instead.
+
+**Drive an affordance blind, and assert both directions.** Monopoly's build
+button is rendered from a list of squares the server sends. `tryToBuild` does
+not read that list: it opens the towns this player owns and presses whatever is
+there. That is what makes it able to catch a disagreement — a button the server
+would refuse, *and* a missing button on a square it would accept. Then
+`buildOfferedOnSomebodyElses` walks the other direction over squares that must
+never offer one, and reports how many it looked at so it cannot pass by having
+found none. Both were checked by mutation: forcing the client to always offer
+Build fails them with `an unowned square offered build-btn` and `6 of 6 of other
+people's towns offered a build button`.
+
+Building itself is *reported*, not required — completing a colour set needs the
+dice to put one player on both browns, which is likely over eighty turns but not
+certain. The rule from the top of this file applies: what is required is the part
+that fires every run.
 
 The client keeps its state in a module scope with nothing on `window`. That is
 correct, and the tests read the DOM instead. Resist the urge to export state for

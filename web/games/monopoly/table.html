@@ -32,6 +32,11 @@
           <button id="roll-btn" class="btn primary" disabled>Roll</button>
           <button id="buy-btn" class="btn primary" hidden></button>
           <button id="pass-btn" class="btn ghost" hidden>No thanks</button>
+          <!-- The two ways out of jail that are not a thrown double. Hidden
+               unless the server says they are available, so a button is never
+               offered that would be refused. -->
+          <button id="fine-btn" class="btn primary" hidden></button>
+          <button id="pardon-btn" class="btn" hidden></button>
         </div>
       </div>
     </div>
@@ -89,12 +94,43 @@
       you pass GO. Land on a tax square and you pay it. Owe more than you have and
       you are out — whatever you were carrying goes to whoever you owed.</p>
 
+    <h3>ကံစမ်း and ရပ်ရွာရန်ပုံငွေ</h3>
+    <p>Land on one and you turn over a card — fifty of them, and every one is a
+      day you have had. <b>Chance</b> is luck and movement: the power coming back,
+      the bus being full, a checkpoint wanting a document you left at home.
+      <b>Community Chest</b> is money and life: the tea shop, the exchange rate,
+      an aunt insisting you take her money.</p>
+    <p>The card says what happens, and everybody sees it. Keep the
+      <b>get-out-of-jail</b> card if you draw it — you hold it until you need it.</p>
+
+    <h3>Jail</h3>
+    <p>Sent to jail and you are <b>held</b> there, not visiting. On your turn you
+      may throw for a double, pay the K50,000 fine, or spend a get-out-of-jail
+      card. Three failed throws and the fine is taken and you are let out anyway.
+      Landing on the corner the ordinary way is only visiting.</p>
+
+    <h3>Building</h3>
+    <p><b>Own every town of one colour and you may build on them</b> — before you
+      roll, or while you are being held in jail. A house costs the same on every
+      town in a set, and the rent it earns dwarfs the doubled rent you were
+      charging: three houses on Kalaw takes it from K28,000 to K550,000. This is
+      how the game ends.</p>
+    <p>Two rules. <b>Build evenly</b>: no second house anywhere in a set until
+      every town in it has one, and the same in reverse when you sell. And
+      <b>the bank runs out</b> — there are 32 houses and 12 hotels on the table,
+      so buying up the cheap sets to starve everybody else of building material
+      is a real move. The fifth building on a town is a <b>hotel</b>, and the four
+      houses under it go back on the shelf.</p>
+    <p>Tap any town to see what it costs, what it charges at every level, and to
+      build or sell. Selling gives you back <b>half</b> what you paid, which is
+      how you raise cash instead of going out.</p>
+
     <div class="rules-slice">
       <h3>Not in yet</h3>
-      <p>This is the first slice of the game. Chance and Community Chest squares
-        do nothing when you land on them, the jail corner does not hold you, and
-        there are no houses, auctions, mortgages or trades. Without houses, rents
-        stay small — so expect a long, rich game rather than a bankruptcy.</p>
+      <p>No auctions, mortgages or trades. A town nobody buys stays with the
+        bank instead of going up for bidding, and a colour set you cannot
+        complete is one you can never build on — so for now the cards and the
+        rents are the whole of the pressure.</p>
     </div>
   </section>
 
@@ -128,13 +164,47 @@
       ရှိသည်ထက် ပိုပေးရမည်ဆိုပါက ပွဲထွက်ရမည် — သင့်လက်တွင် ရှိသမျှ
       ပေးရမည့်သူဆီ ရောက်သွားမည်။</p>
 
+    <h3>ကံစမ်း နှင့် ရပ်ရွာရန်ပုံငွေ</h3>
+    <p>ထိုကွက်များပေါ် ရောက်လျှင် ကဒ်တစ်ခု လှန်ရမည် — ကဒ် ၅၀ ရှိသည်။
+      <b>ကံစမ်း</b> က ကံနှင့် ရွေ့လျားမှု — မီးပြန်လာခြင်း၊ ဘတ်စ်ကား
+      ပြည့်ကျပ်ခြင်း၊ စစ်ဆေးရေးဂိတ်တွင် စာရွက်စာတမ်း မပါခြင်း။
+      <b>ရပ်ရွာရန်ပုံငွေ</b> က ငွေနှင့် နေထိုင်မှု — လက်ဖက်ရည်ဆိုင်၊
+      ငွေလဲနှုန်း၊ အဘွားက မုန့်ဖိုးပေးခြင်း။</p>
+    <p>ကဒ်တွင် ရေးထားသည့်အတိုင်း ဖြစ်မည်၊ အားလုံးလည်း မြင်မည်။
+      <b>အချုပ်မှ အခမဲ့ထွက်ခွင့်</b> ကဒ်ရလျှင် သိမ်းထားပါ — လိုအပ်သည့်အခါ
+      အသုံးပြုနိုင်သည်။</p>
+
+    <h3>အချုပ်</h3>
+    <p>အချုပ်သို့ ပို့ခြင်းခံရလျှင် <b>ချုပ်ထားခြင်း</b> ဖြစ်သည်၊ လာလည်ရုံ
+      မဟုတ်။ သင့်အလှည့်တွင် အံစာတူ လှိမ့်ကြည့်နိုင်သည်၊ ကျပ် ၅၀,၀၀၀
+      ဒဏ်ငွေ ပေးနိုင်သည်၊ သို့မဟုတ် အခမဲ့ထွက်ခွင့်ကဒ် အသုံးပြုနိုင်သည်။
+      သုံးကြိမ် မအောင်မြင်လျှင် ဒဏ်ငွေယူပြီး ထွက်ခွင့်ပေးမည်။
+      ပုံမှန်အတိုင်း ထိုထောင့်ပေါ် ရောက်ခြင်းက လာလည်ရုံသာ ဖြစ်သည်။</p>
+
+    <h3>အိမ်ဆောက်ခြင်း</h3>
+    <p><b>အရောင်တစ်မျိုးတည်း၏ မြို့အားလုံးကို ပိုင်ဆိုင်ပါက ထိုမြို့များပေါ်
+      အိမ်ဆောက်နိုင်သည်</b> — အံစာမလှိမ့်မီ၊ သို့မဟုတ် အချုပ်ထဲ ရှိစဉ်။
+      အစုံတစ်စုံအတွင်း အိမ်တန်ဖိုးက တူညီသည်။ ရလာသည့် အခွန်က နှစ်ဆတက်ထားသည့်
+      အခွန်ထက် အများကြီး ပိုသည် — ကလောပေါ် အိမ်သုံးလုံးဆောက်လျှင် အခွန်
+      ကျပ် ၂၈,၀၀၀ မှ ကျပ် ၅၅၀,၀၀၀ ဖြစ်သွားသည်။ ဒါက ပွဲအဆုံးသတ်စေသည့် အရာ
+      ဖြစ်သည်။</p>
+    <p>စည်းကမ်း နှစ်ချက်။ <b>အညီအမျှ ဆောက်ပါ</b> — အစုံအတွင်း မြို့အားလုံးတွင်
+      အိမ်တစ်လုံးစီ မရှိမချင်း ဒုတိယအိမ် မဆောက်နိုင်၊ ပြန်ရောင်းသည့်အခါလည်း
+      အလားတူ။ ထို့အပြင် <b>ဘဏ်တွင် အိမ် ကုန်နိုင်သည်</b> — အိမ် ၃၂ လုံးနှင့်
+      ဟိုတယ် ၁၂ လုံးသာ ရှိသည်၊ ထို့ကြောင့် တန်ဖိုးနည်းသည့် အစုံများကို ဝယ်ပြီး
+      အခြားသူများ မဆောက်နိုင်အောင် ပိတ်ဆို့ခြင်းက တကယ့်နည်းလမ်း ဖြစ်သည်။
+      မြို့တစ်ခုပေါ် ပဉ္စမအဆောက်အအုံသည် <b>ဟိုတယ်</b> ဖြစ်သည်၊ အောက်မှ
+      အိမ်လေးလုံး ဘဏ်ဆီ ပြန်သွားမည်။</p>
+    <p>မြို့တစ်ခုကို တို့ကြည့်ပါ — တန်ဖိုး၊ အဆင့်တိုင်း၏ အခွန်၊ ဆောက်ရန်နှင့်
+      ပြန်ရောင်းရန် ခလုတ်များ ပါဝင်သည်။ ပြန်ရောင်းလျှင် ပေးထားသည့်
+      <b>တစ်ဝက်</b> ပြန်ရမည် — ပွဲထွက်မခံဘဲ ငွေရှာသည့် နည်းလမ်း ဖြစ်သည်။</p>
+
     <div class="rules-slice">
       <h3>မပါဝင်သေးသည်များ</h3>
-      <p>ဒါက ကစားပွဲ၏ ပထမအဆင့်သာ ဖြစ်သည်။ ကံစမ်းကွက်နှင့်
-        ရပ်ရွာရန်ပုံငွေကွက်များသည် အလုပ်မလုပ်သေးပါ။ အချုပ်ထောင့်သည်
-        သင့်ကို ချုပ်ထားမည်မဟုတ်။ အိမ်၊ လေလံ၊ အပေါင်နှင့် အလဲအလှယ်
-        မပါဝင်သေးပါ။ အိမ်မရှိသဖြင့် အခွန်များ နည်းနေမည် — ထို့ကြောင့်
-        ပွဲထွက်ရန်ထက် ရှည်လျားချမ်းသာသော ပွဲတစ်ပွဲ ဖြစ်လိမ့်မည်။</p>
+      <p>လေလံ၊ အပေါင်နှင့် အလဲအလှယ် မပါဝင်သေးပါ။ မည်သူမျှ မဝယ်သည့်မြို့သည်
+        လေလံတင်မည့်အစား ဘဏ်လက်တွင်းသာ ရှိနေမည်။ အစုံ မပြည့်နိုင်သည့်
+        အရောင်တစ်မျိုးပေါ် ဘယ်တော့မှ ဆောက်နိုင်မည် မဟုတ် — ထို့ကြောင့်
+        လက်ရှိတွင် ကဒ်များနှင့် အခွန်များက ဖိအားပေးသည့် အရာ ဖြစ်သည်။</p>
     </div>
   </section>
   </div>

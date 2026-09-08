@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import {
-  launch, seat, step, check, report, assert, waitFor, sleep, safeClick,
+  launch, seat, step, check, report, assert, waitFor, sleep, safeClick, clearModals,
 } from "./lib.js";
 
 const PORT = 8123;
@@ -71,6 +71,12 @@ async function theGameComesBack() {
       }
       await sleep(150);
       for (const p of players) await safeClick(p.$("#pass-btn"), 300);
+      // Whatever prompt the draw opened. Without this the six turns can end with
+      // the table sitting on a defuse placement, a Favor, or a demand — none of
+      // which #deck or #pass-btn answers — and then the restored game is stuck on
+      // it too and "the game can still be played" fails for a reason that has
+      // nothing to do with the restart.
+      await clearModals(players);
     }
     before = await tableOf(host);
     assert(before.hand > 0, "nothing was dealt");
@@ -144,6 +150,10 @@ async function theGameComesBack() {
       }
       await sleep(200);
       for (const p of players) await safeClick(p.$("#pass-btn"), 300);
+      // And here for the same reason: a draw after the restart can open a prompt
+      // of its own, and an unanswered one stops the log growing for the rest of
+      // the loop — which reads as a table that came back dead.
+      await clearModals(players);
       grew = (await tableOf(host)).log > logBefore;
     }
     assert(grew, "no move after the restart ever reached the play-by-play");

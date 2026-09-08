@@ -2,12 +2,11 @@
 //
 // A pure reducer, like the other games here: Apply(state, action) mutates the
 // state and returns what happened, and knows nothing about sockets, JSON or
-// players' connections. The board itself is in board.go.
+// players' connections.
 //
-// Scope, deliberately: this is the first slice — dice, movement, buying an
-// unowned square, paying rent, taxes, and going bankrupt. What the original has
-// and this does not yet is listed at the bottom of engine.go so the gap is
-// written down rather than discovered.
+// The board is in board.go, the two decks in cards.go and draw.go, and building
+// in build.go. What the original has and this does not yet is listed at the
+// bottom of engine.go, so the gap is written down rather than discovered.
 package game
 
 import "boardgame/kittens/internal/prng"
@@ -36,9 +35,23 @@ const (
 	PhaseRoll Phase = "roll"
 	// PhaseBuy: they landed on an unowned square and must buy or pass on it.
 	PhaseBuy Phase = "buy"
+	// PhaseCard: a Chance or Community Chest card is face up in front of them
+	// and they have to read it before the table moves on. A phase rather than an
+	// instant resolution because the card *is* the moment — resolving it silently
+	// would mean the only place a player learns what happened is the log.
+	PhaseCard Phase = "card"
+	// PhaseJail: they are being held, and choose how to get out.
+	PhaseJail Phase = "jail"
 	// PhaseGameOver: one player left standing.
 	PhaseGameOver Phase = "gameOver"
 )
+
+// JailFine is what buying your way out costs.
+const JailFine = 50 * kyat
+
+// JailAttempts is how many turns you may spend trying to throw doubles before
+// the fine is taken and you are let out anyway — the original's three.
+const JailAttempts = 3
 
 // Player is one token on the board.
 type Player struct {
@@ -50,6 +63,16 @@ type Player struct {
 	// Alive is false once bankrupt. A bankrupt player stays in the list so the
 	// log and the seat strip can still name them.
 	Alive bool
+
+	// Jailed is true while they are being held, as opposed to standing on the
+	// corner as a visitor. Tries counts the turns spent attempting doubles.
+	Jailed bool
+	Tries  int
+	// Pardons is how many get-out-of-jail cards they are holding.
+	Pardons int
+	// Missing is turns still to be sat out. Decremented as their turn comes
+	// round, so "miss a turn" costs exactly one.
+	Missing int
 }
 
 // State is one game.
@@ -77,8 +100,44 @@ type State struct {
 	Owner [BoardSize]string
 	// Pending is the square awaiting a buy-or-pass decision during PhaseBuy.
 	Pending int
+
+	// Houses is how many buildings stand on each square: 0 to 4 houses, and
+	// HotelLevel for a hotel. Only a property can carry any — a station or a
+	// utility charges by how many of its kind you hold instead.
+	//
+	// Indexed by square like Owner, and for the same reason: rent is looked up on
+	// every landing, and a flat array is what the client draws from too. The bank's
+	// stock of houses is *not* stored beside it; it is counted from here, so the
+	// two cannot drift apart. See build.go.
+	Houses [BoardSize]int
+
+	// The two card piles, as indices into the pack in cards.go. Held as indices
+	// rather than as cards so a saved game is a list of small integers and the
+	// text lives in exactly one place.
+	//
+	// Drawn from the front; the used ones go to the back of Discard and the pile
+	// is refilled and reshuffled when it runs out, which is how a physical deck
+	// behaves. A pardon somebody is holding is in neither pile — it comes back
+	// only when it is spent.
+	ChanceDraw    []int
+	ChanceDiscard []int
+	ChestDraw     []int
+	ChestDiscard  []int
+	// Drawn is the card face up in front of the current player during PhaseCard,
+	// as an index into the pack, or -1.
+	Drawn int
+
 	// WinnerID is set once, when the game ends.
 	WinnerID string
+}
+
+// DrawnCard is the card being read, or nil when none is.
+func (s *State) DrawnCard() *Card {
+	if s.Phase != PhaseCard || s.Drawn < 0 || s.Drawn >= len(cards) {
+		return nil
+	}
+	c := cards[s.Drawn]
+	return &c
 }
 
 // CurrentID is whoever the table is waiting for.
@@ -139,18 +198,55 @@ func (s *State) aliveCount() int {
 
 // advance passes play to the next player still in the game, and resets the
 // per-turn state that belongs to whoever is leaving.
-func (s *State) advance() {
+//
+// Two things happen on the way past a seat. A player owing missed turns loses one
+// here and is stepped over — which is what makes "miss a turn" cost exactly one
+// turn rather than however long the loop happens to take. And a player being held
+// lands in PhaseJail rather than PhaseRoll, because their choice is how to get
+// out, not where to move.
+//
+// Returns the events worth reporting: a turn silently skipped looks like the
+// table forgetting whose go it is.
+func (s *State) advance() []Event {
 	s.Doubles = 0
+	var events []Event
 	n := len(s.Players)
-	for k := 1; k <= n; k++ {
-		next := (s.Current + k) % n
-		if s.Players[next].Alive {
-			s.Current = next
-			s.Phase = PhaseRoll
-			return
-		}
+	if n == 0 {
+		return nil
 	}
+	// A local cursor, and s.Current written only when a seat actually takes its
+	// turn. Walking with `s.Current + step` while also assigning to s.Current —
+	// which is what this did first — advances the base and the offset together and
+	// steps over twice as many seats as it should.
+	//
+	// Bounded so a table where everybody owes turns resolves rather than spinning.
+	cursor := s.Current
+	for guard := 0; guard < n*(maxMissed+1); guard++ {
+		cursor = (cursor + 1) % n
+		p := &s.Players[cursor]
+		if !p.Alive {
+			continue
+		}
+		if p.Missing > 0 {
+			p.Missing--
+			events = append(events, Event{Kind: EvMissTurn, ActorID: p.ID, Tile: -1})
+			continue
+		}
+		s.Current = cursor
+		if p.Jailed {
+			s.Phase = PhaseJail
+		} else {
+			s.Phase = PhaseRoll
+		}
+		return events
+	}
+	return events
 }
+
+// maxMissed bounds how many turns a card may cost, and so how far advance() has
+// to look. No card in the pack asks for more than one; the bound is here so a
+// future card that asks for three cannot wedge the loop.
+const maxMissed = 5
 
 // ownsGroup reports whether a player holds every property in a colour set, which
 // doubles the unimproved rent on all of them.

@@ -62,6 +62,12 @@ type ClientMsg struct {
 	// UNO: a wild names a colour, and going down to one card is announced.
 	Colour string `json:"colour"`
 	SayUno bool   `json:"sayUno"`
+
+	// Monopoly: which square a build or a sell is about. Every other move there
+	// acts on wherever the player is standing, which the server already knows —
+	// building is the one that names a square, because you build on a set rather
+	// than on the square you happen to be on.
+	Tile int `json:"tile"`
 }
 
 // Entry is one line of the shared play-by-play, and the only shape in which a
@@ -90,8 +96,17 @@ type Entry struct {
 	// thrown. A pointer rather than an int because square zero is GO — a real
 	// answer that `omitempty` would drop — and a slice rather than [2]int because
 	// a fixed-size array is never empty and would go out on every entry.
-	Tile    *int   `json:"tile,omitempty"`
-	Dice    []int  `json:"dice,omitempty"`
+	Tile *int  `json:"tile,omitempty"`
+	Dice []int `json:"dice,omitempty"`
+	// Card is which Chance or Community Chest card was turned over, as an index
+	// into the pack the client fetched alongside the board. A pointer for the
+	// same reason Tile is one: card zero is a real card.
+	Card *int `json:"card,omitempty"`
+	// Houses is Monopoly's: how many buildings stand on the square after a build
+	// or a sell. A pointer for the third time and the same reason — zero is the
+	// real answer when the last house comes down, and the log has to be able to
+	// say so long after the board has moved on.
+	Houses  *int   `json:"houses,omitempty"`
 	OnlyFor string `json:"-"`
 }
 

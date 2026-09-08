@@ -1442,6 +1442,40 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 .tile[data-side="right"].owned::after  { inset: 0 auto 0 0; width: 6%; }
 .tile.mine { box-shadow: inset 0 0 0 2px var(--accent); }
 
+/* ─── houses and hotels ─── */
+
+/* On the band, which is where a real board prints them, and which is the one
+   strip of a square carrying no text — so a row of houses costs nothing that was
+   being read. Laid out along the band, so the same rule works on all four sides
+   once the flex direction follows the edge. */
+.tile-houses {
+  position: absolute; display: flex; gap: calc(var(--sq) * .05);
+  align-items: center; justify-content: center;
+  pointer-events: none; z-index: 1;
+}
+.tile[data-side="top"]    .tile-houses { inset: 0 0 auto 0; height: 24%; }
+.tile[data-side="bottom"] .tile-houses { inset: auto 0 0 0; height: 24%; }
+.tile[data-side="left"]   .tile-houses { inset: 0 auto 0 0; width: 24%; flex-direction: column; }
+.tile[data-side="right"]  .tile-houses { inset: 0 0 0 auto; width: 24%; flex-direction: column; }
+
+/* A house is a little green block with a roof; a hotel is one wide red one. Two
+   shapes rather than two colours of the same shape, because the difference
+   between four houses and a hotel is the difference between K550,000 and
+   K950,000 and has to be readable at a glance. */
+.tile-houses i {
+  width: calc(var(--sq) * .13); height: calc(var(--sq) * .13);
+  background: #1f9d4d;
+  border: 1px solid rgb(var(--scrim-rgb) / .55);
+  border-radius: 1px 1px 0 0;
+  clip-path: polygon(50% 0, 100% 38%, 100% 100%, 0 100%, 0 38%);
+}
+.tile-houses i.hotel {
+  width: calc(var(--sq) * .34); height: calc(var(--sq) * .15);
+  background: #d0342c;
+  border-radius: 2px;
+  clip-path: none;
+}
+
 /* ─── tokens ─── */
 
 /* Standing on the square, over the top of everything rather than pushing the
@@ -1513,7 +1547,23 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   gap: 5px 16px; text-align: left; font-size: 14px;
 }
 .tile-detail dt { color: var(--muted); }
-.tile-detail dd { margin: 0; font-weight: 700; }
+/* The rent row is six figures on one line, and the one in force is bracketed
+   rather than styled — it has to survive being read out loud. Tabular figures so
+   the ladder lines up as a ladder. */
+.tile-detail dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Build and Sell, inside the detail card rather than in the board's middle: you
+   build on a square, so the controls belong on that square's card. Which also
+   means they cost no room at all until somebody taps a deed. */
+.build-row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  align-items: center;
+}
+.build-why, .build-stock {
+  flex-basis: 100%; margin: 0; text-align: center;
+  font-size: 13px; color: var(--muted);
+}
+.build-why { font-weight: 600; }
 
 /* What the slice does not have yet, called out in the rules sheet rather than
    left for a player to discover by landing on a square that does nothing. */
@@ -1542,3 +1592,42 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   .board-centre { width: min(78%, 320px); gap: 10px; }
   .board-status { font-size: 12px; }
 }
+
+/* ─────────────────────── monopoly: a drawn card ───────────────────────
+   The card the two decks deal, shown to the whole table rather than only to
+   whoever drew it: at a real table the card is read out, and watching somebody
+   else's luck is half of why the deck is there.
+
+   Two decks, two colours, and they are the colours the squares use — so the card
+   in front of you and the square you are standing on are visibly the same
+   thing. */
+.draw-card {
+  display: grid; justify-items: center; gap: 8px;
+  padding: 18px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--band, var(--surface-line));
+  background: color-mix(in srgb, var(--band, var(--surface)) 8%, var(--surface));
+  text-align: center;
+}
+.draw-card[data-deck="chance"] { --band: #e2822f; }
+.draw-card[data-deck="chest"]  { --band: #2f8f4f; }
+
+.draw-emoji { font-size: 44px; line-height: 1; }
+.draw-title { font-size: 18px; line-height: 1.25; }
+.draw-title:lang(my) { font-size: 17px; line-height: 1.6; }
+/* The joke, in the author's own words. Quieter than the headline and quieter
+   than the rule, because it is the part that is not information. */
+.draw-flavour {
+  margin: 0; font-size: 14px; font-style: italic;
+  color: var(--muted-ink); line-height: 1.4;
+}
+.draw-flavour:lang(my) { font-style: normal; line-height: 1.85; }
+/* What it actually does, generated from the effects rather than written into the
+   pack — so a card cannot say one thing and do another. */
+.draw-effect {
+  margin: 0; font-weight: 800; font-size: 15px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--band, var(--surface-soft));
+  color: #fff;
+}
+.draw-effect:lang(my) { line-height: 1.8; }

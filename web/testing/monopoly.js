@@ -147,6 +147,31 @@ async function theBoard() {
       await safeClick(host.$("#modal-alt"), 1000);
     });
 
+    // The rent ladder is the question building exists to answer — "what is this
+    // worth if I finish the set" — so it is on the card whether or not anything
+    // is built yet. Which is also why this check can run on a fresh board and
+    // will fire on every run, unlike building itself.
+    await check("a square's card shows what building it would earn", async () => {
+      await safeClick(host.$('#board .tile[data-tile="1"]'), 1500);
+      await host.page.waitForSelector("#modal", { state: "visible", timeout: 3000 });
+      const card = await host.page.evaluate(() => ({
+        rows: document.querySelector(".tile-detail")?.textContent || "",
+        buttons: [...document.querySelectorAll(".build-row button")].map((b) => b.id),
+      }));
+
+      // Myeik's six printed figures, unimproved through to the hotel.
+      for (const want of ["K2,000", "K10,000", "K30,000", "K90,000", "K160,000", "K250,000"]) {
+        assert(card.rows.includes(want), `the ladder is missing ${want}: ${JSON.stringify(card.rows)}`);
+      }
+      // And what a house on it costs, or there is no way to weigh the ladder
+      // against the price.
+      assert(/K50,000/.test(card.rows), `no house price on the card: ${JSON.stringify(card.rows)}`);
+      // Nobody owns anything yet, so there must be nothing to press. A build
+      // button here would be one the server refuses.
+      assert(card.buttons.length === 0, `an unowned square offered ${card.buttons}`);
+      await safeClick(host.$("#modal-alt"), 1000);
+    });
+
     await check("the board reads in Burmese", async () => {
       const before = await squareNames(host);
       assert(!BURMESE.test(before.join("")), "the board is already in Burmese in English mode");
@@ -185,7 +210,13 @@ async function aGame() {
   const [host] = players;
 
   // Collected during play, asserted afterwards: each is a moment one turn wide.
-  const seen = { rolled: false, moved: false, bought: false, rent: false, passedGo: false };
+  const seen = {
+    rolled: false, moved: false, bought: false, rent: false, passedGo: false,
+    // The card that was on screen the first time one was drawn, and whether the
+    // two ways out of jail were exercised. Collected here because each is up for
+    // one turn only.
+    card: null, jailed: false, paidFine: false,
+  };
 
   try {
     await step("a three-player table is dealt", async () => {
@@ -211,8 +242,62 @@ async function aGame() {
         const before = await positions(host);
 
         let acted = false;
+
+        // A drawn card first, and across every player rather than the first one
+        // with a modal open: the card is shown to the whole table, but only
+        // whoever drew it gets the button. Pressing the first screen that has it
+        // up presses a hidden button on a spectator's, and the table never moves.
+        for (const p of players) {
+          const st = await turnState(p);
+          if (!st.card) continue;
+          const card = await readCard(p);
+          if (card && card.hasButton) {
+            if (!seen.card) seen.card = card;
+            await safeClick(p.$("#modal-ok"), 1200);
+            acted = true;
+            break;
+          }
+        }
+        if (acted) {
+          await sleep(70);
+          continue;
+        }
+
+        // Building, the way a player does it: tap one of your own towns and
+        // press what is on its card. Tried every tenth iteration rather than
+        // every one, because it costs a modal open per square held and the
+        // opportunity does not come round quickly.
+        //
+        // Reported rather than required. Completing a colour set needs the dice
+        // to land the same player on both browns, and in a fixed number of turns
+        // that is likely but not certain — so this drives it whenever it is
+        // possible and says whether it happened, the way play.js reports its
+        // coverage. What is *required* is the two checks below that fire every
+        // run: the card offers no build button on a square you do not own, and
+        // the ladder is on it either way.
+        if (i > 20 && i % 10 === 0) {
+          for (const p of players) {
+            const built = await tryToBuild(p);
+            if (!built) continue;
+            seen.built = true;
+            if (built.hotel) seen.hotel = true;
+            break;
+          }
+        }
+
         for (const p of players) {
           const state = await turnState(p);
+          // Being held is its own kind of turn: a double, the fine, or a card.
+          if (state.jailed) {
+            seen.jailed = true;
+            if (state.canPayFine && i % 3 === 0) {
+              seen.paidFine = await safeClick(p.$("#fine-btn"), 1200);
+            } else {
+              await safeClick(p.$("#roll-btn"), 1200);
+            }
+            acted = true;
+            break;
+          }
           if (state.offer) {
             // Answer it every time. Writing this as `seen.bought = seen.bought ||
             // click(...)` short-circuits once one square has been bought, so the
@@ -240,6 +325,7 @@ async function aGame() {
         if (/bought /.test(all)) seen.bought = true;
         if (/paid .* for /.test(all)) seen.rent = true;
         if (/passed GO/.test(all)) seen.passedGo = true;
+        if (/built a (house|hotel)/.test(all)) seen.built = true;
 
         // Somebody's token has to be moving, or the loop is spinning on a wedged
         // table and every check below would still pass.
@@ -268,6 +354,22 @@ async function aGame() {
       console.log(`  covered: ${Object.entries(seen).filter(([, v]) => v).map(([k]) => k).join(", ")}`);
     });
 
+    await check("a card was drawn, read, and did something", async () => {
+      assert(seen.card, "nobody landed on Chance or Community Chest in eighty turns");
+      const c = seen.card;
+      assert(c.deck === "chance" || c.deck === "chest", `the card came from deck ${JSON.stringify(c.deck)}`);
+      assert(c.emoji.trim(), "the card has no emoji");
+      assert(c.title.trim(), "the card has no title");
+      // The flavour line is the whole reason the pack was written by hand — a
+      // card that shows only its rule has lost the joke.
+      assert(c.flavour.trim(), `${c.title} has no flavour line`);
+      // And it says what it does, generated from the effects rather than typed
+      // into the pack, so a card cannot say one thing and do another.
+      assert(c.effect.trim(), `${c.title} does not say what it does`);
+      assert(c.hasButton, "the player who drew the card had no way to acknowledge it");
+      console.log(`  card seen: ${c.emoji} ${c.title.trim()} — ${c.effect.trim()}`);
+    });
+
     await check("the money adds up", async () => {
       // The bank pays for laps and takes for taxes and purchases, so the total is
       // not fixed — but nobody may hold less than nothing, and nobody who is
@@ -275,6 +377,27 @@ async function aGame() {
       const cash = await allCash(host);
       for (const c of cash) assert(c >= 0, `somebody holds ${c}`);
       assert(cash.length === 3, `${cash.length} seats, want 3`);
+    });
+
+    await check("building is offered on a set you hold and refused on one you don't", async () => {
+      // Every run: a town somebody else owns must carry no build button on its
+      // card, whoever is looking. The list of buildable squares comes from the
+      // server, so a button here would mean the client had decided for itself.
+      const offered = await buildOfferedOnSomebodyElses(host);
+      assert(offered.checked > 0, "nobody owns a town, so this checked nothing");
+      assert(offered.withButton === 0,
+        `${offered.withButton} of ${offered.checked} of other people's towns offered a build button`);
+
+      // And when it did happen, it has to have landed on the board rather than
+      // only in the log.
+      if (seen.built) {
+        const m = await measureBoard(host);
+        assert(m.buildings > 0, "the log says a house went up and the board shows none");
+        assert(m.buildingsOutside === 0,
+          `${m.buildingsOutside} buildings are drawn outside their own square`);
+      }
+      console.log(`  building: ${seen.built ? "yes" : "no set was completed in eighty turns"}` +
+        `${seen.hotel ? ", including a hotel" : ""}`);
     });
 
     await check("an owned square still shows its price", async () => {
@@ -316,6 +439,7 @@ function measureBoard(p) {
     const byIndex = [];
     let bands = 0, unpaintedBands = 0, inTheMiddle = 0, buyable = 0;
     let tokensOnGo = 0, tokensElsewhere = 0;
+    let buildings = 0, buildingsOutside = 0;
 
     for (const el of grid.querySelectorAll(".tile")) {
       const cs = getComputedStyle(el);
@@ -344,12 +468,24 @@ function measureBoard(p) {
       const tokens = el.querySelectorAll(".token").length;
       if (i === 0) tokensOnGo += tokens;
       else tokensElsewhere += tokens;
+
+      // Houses sit on the colour band, which is a narrow strip — the mistake to
+      // catch is one drawn outside the square it belongs to.
+      const tr2 = el.getBoundingClientRect();
+      for (const b of el.querySelectorAll(".tile-houses i")) {
+        buildings++;
+        const br = b.getBoundingClientRect();
+        if (br.width < 1 || br.height < 1 ||
+            br.left < tr2.left - 0.5 || br.right > tr2.right + 0.5 ||
+            br.top < tr2.top - 0.5 || br.bottom > tr2.bottom + 0.5) buildingsOutside++;
+      }
     }
 
     return {
       tiles: grid.querySelectorAll(".tile").length,
       cells: cells.size,
       byIndex, bands, unpaintedBands, buyable, inTheMiddle, tokensOnGo, tokensElsewhere,
+      buildings, buildingsOutside,
       unreadableNames, sidewaysNames,
       nameSize: Math.min(...nameSizes),
       corner: rectOf('.tile[data-tile="0"]'),
@@ -381,6 +517,52 @@ function positions(p) {
 
 function ownedCount(p) {
   return p.page.$$eval("#board .tile.owned", (els) => els.length);
+}
+
+// tryToBuild plays the building move the way a player does: tap one of your own
+// towns, and press whatever its card offers. Returns what it built, or null.
+//
+// Deliberately DOM-driven and deliberately blind — it does not know which
+// squares the server will accept, it opens the ones this player owns and looks.
+// That is the whole point: a build button the server would refuse, or a missing
+// one on a square it would accept, is exactly the disagreement this catches.
+async function tryToBuild(p) {
+  const mine = await p.page.$$eval("#board .tile.mine[data-group]",
+    (els) => els.map((e) => Number(e.dataset.tile)));
+  for (const i of mine) {
+    if (!(await safeClick(p.$(`#board .tile[data-tile="${i}"]`), 800))) continue;
+    const ready = await p.page
+      .waitForSelector("#build-btn", { state: "visible", timeout: 600 })
+      .catch(() => null);
+    if (!ready) {
+      await safeClick(p.$("#modal-alt"), 600);
+      continue;
+    }
+    const hotel = /hotel|ဟိုတယ်/.test(await ready.textContent());
+    await safeClick(p.$("#build-btn"), 900);
+    // The card stays open and re-renders, so close it rather than leaving a
+    // modal over the board for the rest of the loop.
+    await safeClick(p.$("#modal-alt"), 800);
+    return { tile: i, hotel };
+  }
+  return null;
+}
+
+// Somebody else's town must never offer a build button. Checked from the host's
+// screen over every owned town that is not theirs — which is a real assertion on
+// a played-out board and reports how many squares it looked at, so it cannot
+// pass by having found none.
+async function buildOfferedOnSomebodyElses(p) {
+  const theirs = await p.page.$$eval("#board .tile.owned[data-group]:not(.mine)",
+    (els) => els.map((e) => Number(e.dataset.tile)));
+  let checked = 0, withButton = 0;
+  for (const i of theirs.slice(0, 6)) {
+    if (!(await safeClick(p.$(`#board .tile[data-tile="${i}"]`), 800))) continue;
+    checked++;
+    if (await p.page.$("#build-btn")) withButton++;
+    await safeClick(p.$("#modal-alt"), 600);
+  }
+  return { checked, withButton };
 }
 
 // Ownership used to be a bar along one edge, and the bar sat on top of the price.
@@ -422,9 +604,36 @@ async function ownCash(p) {
 }
 
 function turnState(p) {
-  return p.page.evaluate(() => ({
-    canRoll: !document.getElementById("roll-btn").disabled &&
-             !document.getElementById("roll-btn").hidden,
-    offer: !document.getElementById("buy-btn").hidden,
-  }));
+  return p.page.evaluate(() => {
+    const modal = document.getElementById("modal");
+    return {
+      canRoll: !document.getElementById("roll-btn").disabled &&
+               !document.getElementById("roll-btn").hidden,
+      offer: !document.getElementById("buy-btn").hidden,
+      // A drawn card is a prompt over the board, so nothing else on this
+      // player's screen can be clicked until it is read.
+      card: !modal.hidden && modal.dataset.kind === "monopoly-card",
+      jailed: !document.getElementById("fine-btn").hidden ||
+              /jail/i.test(document.getElementById("board-status").textContent || ""),
+      canPayFine: !document.getElementById("fine-btn").hidden,
+    };
+  });
+}
+
+// readCard captures the card on screen. Collected during play rather than
+// asserted here, because a card is up for one turn and the checks want all of it.
+function readCard(p) {
+  return p.page.evaluate(() => {
+    const face = document.querySelector(".draw-card");
+    if (!face) return null;
+    const ok = document.getElementById("modal-ok");
+    return {
+      deck: face.dataset.deck || "",
+      emoji: (face.querySelector(".draw-emoji") || {}).textContent || "",
+      title: (face.querySelector(".draw-title") || {}).textContent || "",
+      flavour: (face.querySelector(".draw-flavour") || {}).textContent || "",
+      effect: (face.querySelector(".draw-effect") || {}).textContent || "",
+      hasButton: Boolean(ok) && !ok.hidden,
+    };
+  });
 }

@@ -9,9 +9,9 @@ package game
 // Myanmar is the places on them, ordered the way the original orders its
 // streets: the cheapest pair in the first corner, the crown jewels in the last.
 //
-// Prices are the original's, scaled by kyat below. Rents are the unimproved
-// figures; the improved ones are here too so that houses, when they land, are a
-// rules change and not a data-entry job.
+// Prices are the original's, scaled by kyat below. Rent carries all six figures
+// — unimproved, then one to four houses, then a hotel — which is why building
+// turned out to be a rules change (build.go) and not a data-entry job.
 //
 // Every name is carried in both languages. It has to come from the server rather
 // than a table in the client: what a square is called is game data, and everyone
@@ -60,8 +60,8 @@ type Tile struct {
 	Group string `json:"group,omitempty"`
 	Price int    `json:"price,omitempty"`
 	// Rent is the unimproved rent followed by one, two, three, four houses and a
-	// hotel. Only Rent[0] is reachable until building lands; the rest is data,
-	// not dead code, and having it here means that change touches no numbers.
+	// hotel — indexed by State.Houses, which is why the hotel is a fifth level
+	// rather than a flag.
 	Rent [6]int `json:"rent,omitempty"`
 	// House is what one house costs on this property, which in the original
 	// depends on the colour set rather than on the property.

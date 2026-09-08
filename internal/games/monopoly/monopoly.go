@@ -96,6 +96,19 @@ func (g *Game) apply(a game.Action) ([]core.Entry, error) {
 		if e.Kind == game.EvRolled {
 			entry.Dice = []int{e.Dice[0], e.Dice[1]}
 		}
+		if e.Kind == game.EvBuilt || e.Kind == game.EvSold {
+			// The level as it is now, so the line can say "a hotel" rather than
+			// looking the square up in a board that has since changed.
+			level := e.Count
+			entry.Houses = &level
+		}
+		if e.Kind == game.EvCard {
+			// Which card, so the log can name it and the client can show its
+			// face.
+			// Tile is already carrying the square it was drawn on.
+			card := e.Card
+			entry.Card = &card
+		}
 		out = append(out, entry)
 	}
 	return out, nil
@@ -113,6 +126,18 @@ func toAction(playerID string, m core.ClientMsg) (game.Action, bool) {
 		a.Kind = game.ActBuy
 	case "pass":
 		a.Kind = game.ActPass
+	case "read":
+		a.Kind = game.ActReadCard
+	case "fine":
+		a.Kind = game.ActPayFine
+	case "pardon":
+		a.Kind = game.ActUsePardon
+	case "build":
+		a.Kind = game.ActBuild
+		a.Tile = m.Tile
+	case "sell":
+		a.Kind = game.ActSell
+		a.Tile = m.Tile
 	default:
 		return a, false
 	}
@@ -144,6 +169,16 @@ func (g *Game) AutoMove(playerID string) ([]core.Entry, error) {
 		a = game.Action{Kind: game.ActRoll, PlayerID: playerID}
 	case game.PhaseBuy:
 		a = game.Action{Kind: game.ActPass, PlayerID: playerID}
+	case game.PhaseCard:
+		// There is nothing to decide on a card — it says what happens — so
+		// reading it on their behalf takes nothing away from them, and a table
+		// held up by an unread card would be held up forever.
+		a = game.Action{Kind: game.ActReadCard, PlayerID: playerID}
+	case game.PhaseJail:
+		// Rolling for a double, not paying: the fine is their money and the
+		// pardon is their card. Rolling is the choice that spends nothing, and
+		// after three attempts the rules let them out anyway.
+		a = game.Action{Kind: game.ActRoll, PlayerID: playerID}
 	default:
 		return nil, core.ErrNoMove
 	}

@@ -15,12 +15,31 @@ const (
 	// ActPass declines it. In the original the square then goes to auction; here
 	// it simply stays with the bank — see the gap list in engine.go.
 	ActPass ActionKind = "pass"
+	// ActReadCard acknowledges the Chance or Community Chest card in front of
+	// you. There is nothing to decide — the card says what happens — but somebody
+	// has to have seen it before the table moves on.
+	ActReadCard ActionKind = "read"
+	// ActPayFine buys your way out of jail.
+	ActPayFine ActionKind = "fine"
+	// ActUsePardon spends a get-out-of-jail card you are holding.
+	ActUsePardon ActionKind = "pardon"
+	// ActBuild puts a house — or, on the fifth, a hotel — on Tile. Legal before
+	// you roll, on a colour set you hold complete. Does not end your turn: you may
+	// build across a whole set in one go.
+	ActBuild ActionKind = "build"
+	// ActSell takes one building back down for half its price, which is how
+	// somebody who has over-built raises cash instead of going out.
+	ActSell ActionKind = "sell"
 )
 
 // Action is one submitted move.
 type Action struct {
 	Kind     ActionKind
 	PlayerID string
+	// Tile is which square the move is about. Only the building moves name one —
+	// everything else acts on wherever the player is standing, which the engine
+	// already knows.
+	Tile int
 }
 
 // EventKind is one thing that happened, for the play-by-play. Named rather than
@@ -28,11 +47,25 @@ type Action struct {
 type EventKind string
 
 const (
-	EvRolled   EventKind = "rolled"
-	EvMoved    EventKind = "moved"
-	EvPassedGo EventKind = "passedGo"
-	EvBought   EventKind = "bought"
-	EvDeclined EventKind = "declined"
+	EvRolled EventKind = "rolled"
+	// EvCard is a card being turned face up; Card names which one.
+	EvCard EventKind = "card"
+	// EvCardPay is money a card moved. Separate from EvRent and EvTax so the log
+	// can say "the card cost you" rather than inventing a landlord.
+	EvCardPay    EventKind = "cardPay"
+	EvMissTurn   EventKind = "missTurn"
+	EvFine       EventKind = "fine"
+	EvFreed      EventKind = "freed"
+	EvPardonUsed EventKind = "pardonUsed"
+	EvMoved      EventKind = "moved"
+	EvPassedGo   EventKind = "passedGo"
+	EvBought     EventKind = "bought"
+	EvDeclined   EventKind = "declined"
+	// EvBuilt and EvSold are a building going up or coming down. Amount is the
+	// money; Count is the square's new level, so the log can say "a hotel" without
+	// reading the state back.
+	EvBuilt    EventKind = "built"
+	EvSold     EventKind = "sold"
 	EvRent     EventKind = "rent"
 	EvTax      EventKind = "tax"
 	EvJailed   EventKind = "jailed"
@@ -52,8 +85,14 @@ type Event struct {
 	Tile int
 	// Amount is money moving, in kyat.
 	Amount int
+	// Count is a quantity that is not money: on EvBuilt and EvSold, how many
+	// buildings now stand on the square.
+	Count int
 	// Dice is filled on a roll.
 	Dice [2]int
+	// Card is an index into the pack, on EvCard. Zero is a real card, so it is
+	// only meaningful on that kind.
+	Card int
 }
 
 // Errors a player can cause. Each is something their own client should not have
@@ -64,5 +103,17 @@ var (
 	ErrNotForSale   = errors.New("that square isn't for sale")
 	ErrCantAfford   = errors.New("you can't afford that")
 	ErrUnknownMove  = errors.New("unrecognised move")
+	ErrNoPardon     = errors.New("you have no get-out-of-jail card")
 	ErrGameFinished = errors.New("the game is over")
+
+	// Building. Each one is a distinct refusal because each has a distinct thing
+	// the player should do about it — complete the set, build the other square
+	// first, wait for somebody to sell.
+	ErrNotYours      = errors.New("you don't own that square")
+	ErrIncompleteSet = errors.New("you need the whole colour set to build")
+	ErrBuildUnevenly = errors.New("build evenly across the set first")
+	ErrFullyBuilt    = errors.New("that square already has a hotel")
+	ErrNothingBuilt  = errors.New("there is nothing to sell there")
+	ErrNoHousesLeft  = errors.New("the bank has no houses left")
+	ErrNoHotelsLeft  = errors.New("the bank has no hotels left")
 )
