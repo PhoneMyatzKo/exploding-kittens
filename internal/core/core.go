@@ -41,8 +41,12 @@ type Membership struct {
 type ClientMsg struct {
 	Type string `json:"type"`
 
-	// Shell-level, handled by the room itself.
+	// Shell-level, handled by the room itself before any game is consulted.
 	Avatar string `json:"avatar"`
+	// Text is what somebody typed into the chat box. Not a game's: no rules read
+	// it, and the room answers it in the lobby as well as at the table. See
+	// internal/room/chat.go.
+	Text string `json:"text"`
 
 	// Shared by every game with a target and a card.
 	TargetID string `json:"targetId"`

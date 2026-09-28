@@ -1158,6 +1158,106 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   font-size: 13px; font-weight: 600; padding: 7px;
 }
 
+/* ─────────────────────────────── chat ───────────────────────────────
+   Fixed to the window rather than placed in a game's layout, and that is the
+   point: chat is the room's, works on the lobby screen too, and must not take
+   space from a board or a hand. A launcher you press and a panel that comes up
+   over the corner — the shape every app has trained people to expect — instead
+   of a third column nobody has the width for.
+
+   Below .conn-warning's z-index on purpose: a dropped socket is the more urgent
+   message, and chat is not sending anything while it is down anyway. */
+/* Top right, under the topbar, rather than the bottom-right corner every app
+   trains you to expect — and that is measurement rather than taste. The bottom
+   of this screen is the hand: at 390×844 a bottom-right launcher lands on the
+   actions row beside the cards, and any bottom-anchored panel of useful size
+   covers the hand outright. The top right is the one corner that is neither the
+   hand, the deck, nor the middle of the table. */
+.chat-launch {
+  position: fixed; right: 14px; top: 62px; z-index: 60;
+  width: 48px; height: 48px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  background: var(--panel); color: var(--surface-ink);
+  font-size: 19px; cursor: pointer;
+  box-shadow: 0 6px 18px rgb(var(--shadow-rgb) / .45);
+}
+.chat-launch.on { background: var(--accent); color: var(--accent-ink); }
+/* How many messages arrived while it was shut. The one thing that makes a
+   collapsed panel honest — otherwise a conversation happens silently. */
+.chat-badge {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 999px; display: grid; place-items: center;
+  background: var(--warn, #d0342c); color: #fff;
+  font-size: 11px; font-weight: 800;
+}
+
+.chat-panel {
+  position: fixed; right: 14px; top: 118px; z-index: 60;
+  width: min(340px, calc(100vw - 28px));
+  /* Capped rather than given a height, and capped low enough that it cannot
+     reach the hand: on a 720px-tall window the handbar starts at 480 and this
+     panel ends at 449. A short laptop window and a tall phone want very
+     different panels and the list inside is what gives. dvh, not vh, so a
+     phone's address bar cannot push the composer off the bottom. */
+  max-height: min(46dvh, 380px);
+  display: flex; flex-direction: column;
+  background: var(--panel); color: var(--surface-ink);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 12px 34px rgb(var(--shadow-rgb) / .5);
+  overflow: hidden;
+}
+.chat-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--line);
+  font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted);
+}
+.chat-head strong { font: inherit; }
+
+/* min-height: 0 so the list is what shrinks when the panel hits its cap, rather
+   than the composer being pushed out of the bottom. A flex item's automatic
+   minimum is its content's height, and this content is every line said. */
+.chat-log {
+  flex: 1; min-height: 0; overflow-y: auto;
+  margin: 0; padding: 10px 14px; list-style: none;
+  display: grid; gap: 8px; align-content: start;
+  font-size: 14px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.chat-line { overflow-wrap: anywhere; } /* a pasted URL must not widen the panel */
+.chat-line b { color: var(--ink); margin-right: 6px; }
+.chat-line span { color: var(--muted); }
+.chat-line.mine b { color: var(--accent); }
+.chat-line.mine span { color: var(--ink); }
+
+.chat-empty { margin: 0; padding: 14px; text-align: center; font-size: 13px; }
+
+.chat-form {
+  display: flex; gap: 8px; padding: 10px;
+  border-top: 1px solid var(--line);
+}
+.chat-input {
+  flex: 1; min-width: 0;
+  padding: 9px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--bg-soft); color: var(--ink);
+  font: inherit; font-size: 15px; /* 16px or more stops iOS zooming on focus */
+}
+.chat-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* On a phone it spans the width rather than sitting as a 340px card inset on
+   one side, which would waste half the screen. It still hangs from the top, so
+   it covers the table while it is open and never the hand — you are typing, not
+   playing, and it is one tap to dismiss. */
+@media (max-width: 560px) {
+  .chat-panel {
+    right: 8px; left: 8px; top: 112px;
+    width: auto; max-height: min(44dvh, 360px);
+  }
+  .chat-launch { right: 10px; top: 60px; }
+}
+
 @media (min-width: 720px) {
   .seats { justify-content: center; }
   .actions { justify-content: center; }
