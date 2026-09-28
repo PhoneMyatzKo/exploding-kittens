@@ -52,6 +52,7 @@ var (
 	ErrUnknownRoom = errors.New("no room with that code")
 	ErrAvatarTaken = errors.New("somebody already picked that cat")
 	ErrNoAvatar    = errors.New("no such cat")
+	ErrChatTooFast = errors.New("slow down a moment")
 )
 
 type member struct {
@@ -63,6 +64,11 @@ type member struct {
 	Conn      Sender
 	Connected bool
 	Host      bool
+
+	// Chat rate limiting, per member rather than per connection — so dropping and
+	// reconnecting does not hand somebody a fresh bucket. See allowChat in chat.go.
+	chatTokens float64
+	chatSeen   time.Time
 }
 
 // Options are the choices made when a room is created, before anybody has
@@ -98,7 +104,11 @@ type Room struct {
 	game   core.Game
 	logbuf []core.Entry
 	logSeq int
-	rng    *rand.Rand
+	// Chat belongs to the room rather than the game, and keeps its own buffer
+	// because logbuf is emptied on every deal — see chat.go.
+	chatbuf []ChatLine
+	chatSeq int
+	rng     *rand.Rand
 
 	// Action-window bookkeeping. Some games let the rest of the table interrupt a
 	// play for a few seconds (Exploding Kittens' Nope); the room runs the clock
@@ -288,6 +298,10 @@ func (r *Room) handleJoin(c cmdJoin) {
 				}
 				r.game.Rename(m.ID, m.Name)
 				c.reply <- joinResult{PlayerID: m.ID, Token: m.Token}
+				// Chat arrives only as it happens, unlike the play-by-play which is
+				// rebuilt into every state — so a phone coming back from sleep needs
+				// the conversation handed to it or it looks lost.
+				r.sendChatHistory(m)
 				r.rearmTimers()
 				r.broadcast()
 				return
@@ -315,6 +329,9 @@ func (r *Room) handleJoin(c cmdJoin) {
 	}
 	r.members = append(r.members, m)
 	c.reply <- joinResult{PlayerID: m.ID, Token: m.Token}
+	// Somebody arriving mid-conversation sees what has been said, the way they
+	// would walking up to a table.
+	r.sendChatHistory(m)
 	r.appendLog(core.Entry{Kind: "joined", ActorID: m.ID})
 	r.broadcast()
 }
@@ -364,6 +381,12 @@ func (r *Room) handleMsg(c cmdMsg) {
 	}
 	if c.msg.Type == "avatar" {
 		r.handleAvatar(m, c.msg.Avatar)
+		return
+	}
+	// Above the "has it started" guard with the other three, which is what lets
+	// people talk in the lobby, between rounds and after a game is over.
+	if c.msg.Type == "chat" {
+		r.handleChat(m, c.msg.Text)
 		return
 	}
 	if !r.game.Started() {

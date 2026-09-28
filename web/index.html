@@ -160,6 +160,33 @@
   </div>
 </div>
 
+<!-- ───────────────────────────── chat ─────────────────────────────
+     The room's, not any game's — which is why it lives here beside the modal and
+     the toasts rather than in a game's table. It is reachable from the lobby as
+     well as the table, it touches no game's markup, and it deliberately does not
+     share the play-by-play's panel: that is a record you scroll back through,
+     this is a conversation, and on a phone there is no room for both stacked.
+     See web/core/chat.js and internal/room/chat.go. -->
+<button id="chat-launch" class="chat-launch" hidden aria-expanded="false"
+        aria-controls="chat-panel" title="Chat">
+  <i class="fa-solid fa-comment"></i>
+  <span id="chat-badge" class="chat-badge" hidden></span>
+</button>
+
+<aside id="chat-panel" class="chat-panel" hidden aria-label="Chat">
+  <header class="chat-head">
+    <strong>Chat</strong>
+    <button id="chat-close" class="btn ghost small" aria-label="Close chat">✕</button>
+  </header>
+  <ol id="chat-log" class="chat-log" aria-live="polite"></ol>
+  <p id="chat-empty" class="chat-empty muted">Say hello 👋</p>
+  <form id="chat-form" class="chat-form" autocomplete="off">
+    <input id="chat-input" class="chat-input" placeholder="Message…"
+           autocomplete="off" enterkeyhint="send">
+    <button class="btn primary small" type="submit" aria-label="Send">➤</button>
+  </form>
+</aside>
+
 <div id="toasts" class="toasts"></div>
 <div id="conn-warning" class="conn-warning" hidden>Reconnecting…</div>
 

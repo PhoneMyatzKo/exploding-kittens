@@ -8,7 +8,8 @@ await requireServer();
 
 const scripts = [
   "smoke.js", "menu.js", "selection.js", "logtest.js",
-  "publiclobby.js", "modals.js", "rules.js", "imploding.js", "play.js", "uno.js",
+  "publiclobby.js", "modals.js", "rules.js", "chat.js", "imploding.js",
+  "play.js", "uno.js",
 ];
 const failures = [];
 

@@ -19,6 +19,10 @@ import {
 import { openModal, closeModal } from "./core/modal.js";
 import { resetFeed } from "./core/feed.js";
 import { toast } from "./core/toast.js";
+import {
+  mountChat, configureChat, chatMessage, resetChat, setChatViewer,
+  showChatLauncher, openChat, chatIsOpen,
+} from "./core/chat.js";
 
 // The hub's own music: it loops over the title, the menu and the lobby, while
 // people are arriving. A game registers its own tracks on top of this as it
@@ -67,9 +71,14 @@ async function loadAvatars() {
 // ────────────────────────────────────────────────────────── networking
 
 function connect(code) {
+  // Captured before app.code is overwritten: this is a *different* room only if
+  // it differs from the one we were in. A reconnect to the same room needs the
+  // panel left alone — the server replays the conversation on the way back in.
+  const movedRooms = app.code !== "" && app.code !== code;
   app.code = code;
   app.closingOnPurpose = false;
   resetFeed();
+  if (movedRooms) resetChat();
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(`${proto}//${location.host}/ws`);
   url.searchParams.set("code", code);
@@ -106,6 +115,10 @@ function handle(msg) {
   switch (msg.type) {
     case "joined":
       app.me = msg.playerId;
+      // Chat history can land before this does — the room answers the join and
+      // then sends the conversation — so tell it who is looking rather than
+      // leaving your own lines unattributed until somebody speaks again.
+      setChatViewer(app.me);
       setTokenFor(msg.code, msg.token);
       location.hash = msg.code;
       break;
@@ -119,6 +132,11 @@ function handle(msg) {
       break;
     case "private":
       if (mounted.mod) mounted.mod.onPrivate(msg.event);
+      break;
+    // The room's, not any game's — so the shell answers it and no game module
+    // ever sees it. See core/chat.js.
+    case "chat":
+      chatMessage(msg);
       break;
     case "error":
       toast(msg.message);
@@ -472,6 +490,7 @@ function showMenu() {
   $("home").hidden = true;
   $("lobby").hidden = true;
   leaveTable();
+  showChatLauncher(false); // nobody to talk to outside a room
   setTrack("intro");
 }
 
@@ -482,6 +501,7 @@ function showHome(error) {
   $("home").hidden = false;
   $("lobby").hidden = true;
   leaveTable();
+  showChatLauncher(false);
   const box = $("home-error");
   box.hidden = !error;
   box.textContent = error || "";
@@ -500,6 +520,7 @@ function showBrowser() {
   $("home").hidden = true;
   $("lobby").hidden = true;
   leaveTable();
+  showChatLauncher(false);
   $("browser").hidden = false;
   browser.open = true;
   $("browser-status").textContent = "Looking for rooms…";
@@ -597,6 +618,9 @@ function render() {
   }
 
   $("menu").hidden = true;
+  // In a room, so there is somebody to talk to — the lobby as much as the table,
+  // since half of what gets said in a party game is said before the deal.
+  showChatLauncher(true);
   if (!v.started) {
     $("home").hidden = true;
     leaveTable();
@@ -792,7 +816,12 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   // The game gets first refusal: it may have a panel open or a target to pick.
   if (mounted.mod && mounted.mod.onEscape()) return;
+  // Then chat, which is the shell's own and the last thing Escape should shut.
+  if (chatIsOpen()) openChat(false);
 });
+
+configureChat({ send });
+mountChat();
 
 registerSound({ tracks: SHELL_TRACKS });
 mountMuteButtons(SHELL_SLOTS);

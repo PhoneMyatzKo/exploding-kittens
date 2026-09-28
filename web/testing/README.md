@@ -59,6 +59,7 @@ Screenshots land in `shots/` (gitignored).
 | `publiclobby.js` | Only joinable rooms are listed — private, dealt and full ones drop out; joining from the list; visibility remembered |
 | `modals.js` | Everything that appears over the table, on a laptop, a small window and two phone sizes: the Favor picker fits and every card in it can be reached (including a hand twice the size a deal can produce), a big hand never covers the deck or the discard, the Nope window is a centred prompt with reachable buttons and a draining clock, and the target dial spreads its candidates out inside the box |
 | `rules.js` | The how-to-play sheet, per deck: it lists exactly the cards this deck contains, shows them as *loaded* card pictures rather than emoji, reads in Burmese with the art intact, and remembers the language |
+| `chat.js` | Talking to each other, in two browsers: the button is absent outside a room and present in the lobby *before* the deal, a message reaches the other person, an unread badge counts what arrived while the panel was shut, markup arrives as text rather than as HTML, Burmese survives the round trip, nothing said leaks into the play-by-play, a reload brings the conversation back, and neither the panel nor the always-present launcher covers the hand or the deck |
 | `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, stays hidden while buried but shows its own animated card once it surfaces, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 | `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
@@ -80,6 +81,25 @@ skim past the skip line. Both are enforced by the engine and covered in
 `internal/games/kittens/game`.
 
 ## Writing more
+
+**A toggle clicked blind is a coin flip.** `chat.js` opens the panel to type in
+it, so a later check that clicked the launcher again *closed* the thing it was
+about to wait for — and the failure read as "the panel never opened". Anything
+that toggles needs an ensure-open helper that checks first, not a click.
+
+**Measure the layout before choosing where to put something.** Chat was going to
+be a bottom-right floating button, which is what every app trains you to expect.
+On this table the bottom of the screen is the hand: at 390×844 that button lands
+on the actions row, and any bottom-anchored panel of useful size covers the cards
+outright. Ten minutes with `getBoundingClientRect` moved it to the top right and
+settled the panel's height cap with a real number (at 720px tall the handbar
+starts at 480 and the panel ends at 449) rather than a guess.
+
+**Say which overlaps are deliberate.** An open panel on a phone *does* cover the
+table, because the screen is not wide enough to have both and you are typing
+rather than playing. What is not negotiable is the launcher, which is always
+there — so the checks hold the panel and the launcher to different standards at
+different widths, and the comments say why.
 
 **Desktop is not the easy case.** `--card-w` clamps at its *maximum* on a wide
 screen, so a list of cards stacks two-per-row into a very tall box — the Favor
