@@ -23,6 +23,7 @@ const browser = await launch();
 
 try {
   await theBoard();
+  await onAPhone();
   await aGame();
 } catch {
   // step() has already reported it; fall through to the verdict rather than
@@ -56,6 +57,29 @@ async function theBoard() {
       for (const p of players) await p.waitForScreen("table");
       await host.page.waitForSelector("#board .tile", { timeout: 5000 });
     });
+
+    // Before anything on this page touches the language. These contexts are
+    // brand new, so localStorage is empty and what is on screen is the *default*
+    // — which for Monopoly Myanmar is Burmese, because every square is named in
+    // Burmese first and opening in English makes the localisation something you
+    // have to go and find.
+    await check("a fresh table opens in Burmese without being asked", async () => {
+      const names = await squareNames(host);
+      assert(BURMESE.test(names.join("")), `the board opened in English: ${names.slice(0, 4)}`);
+      const chosen = await host.page.evaluate(() => localStorage.getItem("ek:lang"));
+      // And it opened that way without *recording* a choice. If mounting wrote
+      // the fallback back, it would read as a decision — every other game would
+      // then open in Burmese too, and this default could never be changed for
+      // anybody who had once opened a table.
+      assert(chosen === null, `mounting recorded a language choice of ${JSON.stringify(chosen)}`);
+    });
+
+    // The rest of this function reads the board in English, so pick it — which
+    // also proves an explicit choice beats the default.
+    for (const p of players) {
+      await safeClick(p.$("#lang-en"), 1500);
+    }
+    await sleep(250);
 
     await check("forty squares, each in its own place", async () => {
       const m = await measureBoard(host);
@@ -203,6 +227,54 @@ async function theBoard() {
   }
 }
 
+// ───────────────────────────────────────────────────────────── on a phone
+
+// The board is limited by *width* on a phone, so it stops well short of the
+// bottom of the screen — which is the half of the layout a 1440×900 window never
+// exercises. The complaint was a band of dead space under the play-by-play, and
+// it is the same CSS as the desktop overflow: a log sized by a number instead of
+// by what is left.
+async function onAPhone() {
+  const players = [await seat(browser, "Aung"), await seat(browser, "Bo")];
+  const [host] = players;
+  // The reporter's handset, in CSS pixels.
+  for (const p of players) await p.page.setViewportSize({ width: 411, height: 891 });
+
+  try {
+    await step("a table is dealt on a phone", async () => {
+      const code = await host.create({ game: GAME });
+      await players[1].join(code);
+      for (const p of players) {
+        await waitFor(async () => (await p.lobbyNames()).length === 2, { what: "both seats" });
+      }
+      await host.deal();
+      for (const p of players) await p.waitForScreen("table");
+      await host.page.waitForSelector("#board .tile", { timeout: 5000 });
+    });
+
+    await check("the play-by-play fills the screen under the board", async () => {
+      const m = await panelFill(host);
+      assert(m, "there is no side panel on the table");
+      // A hard number rather than a proportion: what was reported is a visible
+      // band of nothing, and 24px is smaller than one line of the log.
+      assert(m.gapBelow <= 24,
+        `${Math.round(m.gapBelow)}px of the ${m.viewH}px screen is empty under the log`);
+      assert(m.gapBelow >= -1,
+        `the log runs ${Math.round(-m.gapBelow)}px past the bottom of the screen`);
+      // And it grew into that space rather than the seats stretching to fill it.
+      assert(m.logHeight > 104,
+        `the log is still its ${Math.round(m.logHeight)}px default height`);
+    });
+
+    await check("the page itself does not scroll on a phone", async () => {
+      const m = await pageOverflow(host);
+      assert(!m.pageScrolls, `the page is ${m.docHeight}px tall in a ${m.viewH}px window`);
+    });
+  } finally {
+    for (const p of players) await p.page.context().close();
+  }
+}
+
 // ───────────────────────────────────────────────────────────── a game
 
 async function aGame() {
@@ -228,6 +300,12 @@ async function aGame() {
       await host.deal();
       for (const p of players) await p.waitForScreen("table");
       await host.page.waitForSelector("#board .tile", { timeout: 5000 });
+      // These are fresh contexts, so the table opens in Burmese — its default,
+      // asserted in theBoard() above. The play-by-play is read here with English
+      // patterns, so pick English rather than making every one of them bilingual
+      // and stop the coverage flags being a test of the translation.
+      for (const p of players) await safeClick(p.$("#lang-en"), 1500);
+      await sleep(250);
     });
 
     await check("everybody starts with the same money", async () => {
@@ -410,6 +488,21 @@ async function aGame() {
       assert(m.clipped === 0, `${m.clipped} of ${m.owned} owned squares push the price outside the square`);
     });
 
+    // The reported bug: a long game made the *page* grow instead of the log
+    // scrolling, so the board crept up off the top of the window and the whole
+    // thing became one long scroll. Checked after a played-out game because it
+    // only appears once the log is taller than the column it sits in.
+    await check("a long log scrolls itself, not the page", async () => {
+      const m = await pageOverflow(host);
+      // Without this the assertion below is vacuous: a log short enough to fit
+      // could never have pushed the page taller whatever the CSS said.
+      assert(m.logOverflows,
+        `the log is ${m.logContent}px in a ${m.logBox}px panel after ${m.lines} lines, ` +
+        "so nothing here was under pressure");
+      assert(!m.pageScrolls,
+        `the page is ${m.docHeight}px tall in a ${m.viewH}px window`);
+    });
+
     await check("the board never overlapped the log or ran off screen", async () => {
       const m = await measureBoard(host);
       assert(m.board.withinViewport, `the board runs off a ${m.viewport.h}px window`);
@@ -517,6 +610,43 @@ function positions(p) {
 
 function ownedCount(p) {
   return p.page.$$eval("#board .tile.owned", (els) => els.length);
+}
+
+// Does the log scroll, or does the page? Only one of them should, and which one
+// is the difference between a table you can read and a very long web page.
+function pageOverflow(p) {
+  return p.page.evaluate(() => {
+    const log = document.getElementById("log");
+    const doc = document.documentElement;
+    return {
+      lines: log.querySelectorAll("li").length,
+      logContent: log.scrollHeight,
+      logBox: log.clientHeight,
+      logOverflows: log.scrollHeight > log.clientHeight + 1,
+      docHeight: doc.scrollHeight,
+      viewH: window.innerHeight,
+      // +1 for the fractional rounding a dvh-sized element can land on.
+      pageScrolls: doc.scrollHeight > window.innerHeight + 1,
+    };
+  });
+}
+
+// How much of the window the column beside the board actually uses. The phone
+// complaint was the other half of the same CSS: the board is limited by width
+// there and stops short of the bottom, and a fixed-height log left the rest of
+// the screen empty.
+function panelFill(p) {
+  return p.page.evaluate(() => {
+    const panel = document.querySelector(".side-panel");
+    const log = document.getElementById("log-panel");
+    if (!panel || !log) return null;
+    return {
+      gapBelow: window.innerHeight - log.getBoundingClientRect().bottom,
+      logHeight: log.getBoundingClientRect().height,
+      viewH: window.innerHeight,
+      panelHeight: panel.getBoundingClientRect().height,
+    };
+  });
 }
 
 // tryToBuild plays the building move the way a player does: tap one of your own

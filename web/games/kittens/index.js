@@ -193,8 +193,12 @@ function paintRulesArt() {
 // two languages, and a table that reads Burmese should pick it once.
 const rulesLang = storedLang;
 
-function setRulesLang(lang) {
-  setStoredLang(lang);
+// persist is false at mount: the language shown then is whatever storedLang()
+// falls back to, and writing a fallback back records it as a decision. Doing so
+// here would have turned every first visit into "chose English" and defeated
+// Monopoly's Burmese default for anybody who had opened this game first.
+function setRulesLang(lang, persist = true) {
+  if (persist) setStoredLang(lang);
   for (const s of document.querySelectorAll(".rules-lang")) {
     s.hidden = s.dataset.lang !== lang;
   }
@@ -249,7 +253,7 @@ export default {
     $("rules-close").onclick = () => showRules(false);
     $("lang-en").onclick = () => setRulesLang("en");
     $("lang-my").onclick = () => setRulesLang("my");
-    setRulesLang(rulesLang());
+    setRulesLang(rulesLang(), false);
     $("deck").onclick = () => {
       me.selected.clear();
       me.awaitingTarget = false;

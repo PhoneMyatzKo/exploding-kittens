@@ -1213,6 +1213,36 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   font-size: 13px; font-weight: 600; padding: 7px;
 }
 
+/* ─────────────────── monopoly: the column beside the board ───────────────────
+   Only Monopoly has this: the players and the play-by-play stacked in one column
+   rather than a seat strip across the top. Declared before the width query below
+   so that query can override it, rather than after where it would win.
+
+   `min-height: 0` on the panel is load-bearing and was missing. A flex item's
+   automatic minimum height is its *content's* height, and this log's content is
+   every line ever written — so `flex: 1` could not shrink it, the column grew
+   past the table's `100dvh`, and a long game scrolled the whole page instead of
+   the log. `.log` itself was never the problem: `overflow-y: auto` already forces
+   its own automatic minimum to zero, which is why the same markup behaves in the
+   games that lay the log out in a row.
+
+   `flex` rather than a fixed height is the other half of it. On a phone the board
+   is limited by width and stops well short of the bottom of the screen, so a
+   104px log left a band of nothing underneath. The log now takes whatever the
+   board does not want, and 104px is the *basis* rather than the height — what it
+   settles at when there is nothing spare. */
+.side-panel {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.side-panel .log-panel {
+  flex: 1 1 104px;
+  height: auto; min-height: 0;
+}
+/* Collapsed, it is a header and nothing else, and must not go on claiming the
+   column it was just told to give back. */
+.side-panel .log-panel.collapsed { flex: none; }
+
 @media (min-width: 720px) {
   .seats { justify-content: center; }
   .actions { justify-content: center; }
@@ -1229,9 +1259,11 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
      board is square, so its size is whatever the *shorter* axis allows — and a
      seat strip across the top was costing it 130px of height for a row that had
      width to spare. One column beside it gives that back to the board, which is
-     the thing people are trying to read. */
+     the thing people are trying to read.
+     `flex: none` because the column is a row item here, so 300px is its width
+     rather than a share of the row; the stacking and the min-height are already
+     set above. */
   .side-panel {
-    display: flex; flex-direction: column; min-height: 0;
     width: 300px; flex: none;
     border-left: 1px solid var(--line);
   }
@@ -1241,7 +1273,7 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
     border-bottom: 1px solid var(--line);
   }
   .side-panel .seat { min-width: 0; }
-  .side-panel .log-panel { flex: 1; width: auto; border-left: 0; }
+  .side-panel .log-panel { width: auto; border-left: 0; }
   /* Collapsed sideways, the header would be a 300px empty bar, so shrink to a
      narrow spine instead and stand the label on its end. */
   .log-panel.collapsed { width: auto; }

@@ -63,7 +63,7 @@ Screenshots land in `shots/` (gitignored).
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 | `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
 | `restart.js` | A game survives the server being killed and restarted: both players' browsers reconnect on their own, land back in their own seats holding the same cards, and can carry on playing. Owns its own server on its own port, because it has to stop and start it |
-| `monopoly.js` | The board *and* the game. The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band painted, corners wider than the edge squares, names at 11px or more in a stated window, tokens starting on GO and moving, a price and the whole rent ladder one tap away, and the whole thing reading in Burmese across a reload. The game: buying, rent, a drawn card with its emoji, flavour line and generated effect, both ways out of jail, and building — houses drawn inside their own square, and never a build button on a square the server would refuse |
+| `monopoly.js` | The board, the layout at two widths, *and* the game. The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band painted, corners wider than the edge squares, names at 11px or more in a stated window, tokens starting on GO and moving, a price and the whole rent ladder one tap away, and the whole thing reading in Burmese across a reload. The game: buying, rent, a drawn card with its emoji, flavour line and generated effect, both ways out of jail, and building — houses drawn inside their own square, and never a build button on a square the server would refuse. The layout: it opens in Burmese without recording that as a choice, a long log scrolls itself rather than the page, and on a phone the play-by-play fills the screen under the board instead of leaving a band of nothing |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never
@@ -82,6 +82,19 @@ skim past the skip line. Both are enforced by the engine and covered in
 `internal/games/kittens/game`.
 
 ## Writing more
+
+**Ask which thing scrolls.** "The board fits on screen" and "the page is no
+taller than the window" are different questions, and the first passed for months
+while the second was false: a long log grew Monopoly's side column past
+`100dvh`, so the whole document scrolled and the board crept off the top.
+`pageOverflow()` asks both, and it refuses to run unless the log has actually
+overflowed its panel — otherwise "the page does not scroll" is true for the
+boring reason and proves nothing.
+
+**A layout bug usually has a second half at the other width.** The same missing
+CSS that grew the page on a desktop left 226px of dead space under the log on a
+phone, because there the board is limited by width and stops short of the bottom.
+`onAPhone()` exists for that half. Neither viewport would have found both.
 
 **Desktop is not the easy case.** `--card-w` clamps at its *maximum* on a wide
 screen, so a list of cards stacks two-per-row into a very tall box — the Favor

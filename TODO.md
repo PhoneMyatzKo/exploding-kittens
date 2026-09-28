@@ -2,6 +2,42 @@
 
 ## Done
 
+- ~~The log grew the page, the phone had dead space, and Monopoly opened in
+  English~~ — three things reported from a real session with screenshots, and the
+  first two turned out to be one line of CSS each on the same rule.
+
+  **The log was growing the page.** `.side-panel .log-panel` had `flex: 1` but no
+  `min-height: 0`. A flex item's automatic minimum height is its *content's*
+  height, and that content is every line ever written — so `flex: 1` could not
+  shrink it, the column grew past the table's `100dvh`, and a long game scrolled
+  the whole document instead of the log. `.log` itself was never at fault:
+  `overflow-y: auto` already forces its own automatic minimum to zero, which is
+  why the identical markup behaves in the games that lay the log out in a row.
+  This is the third time a missing `min-height: 0` has produced a symptom that
+  looked like something else entirely.
+
+  **The phone had a band of nothing under the log**, and it is the same rule: the
+  log was a fixed 104px, while on a phone the board is limited by *width* and
+  stops well short of the bottom of the screen. `flex: 1 1 104px` makes 104px the
+  basis rather than the height — what it settles at when there is nothing spare,
+  rather than a cap on what it can use. Measured on the reporter's handset size:
+  226px of an 891px screen was empty.
+
+  **Monopoly Myanmar now opens in Burmese**, and the interesting part is *how*.
+  One key and a per-game *fallback*, not a key per game: "what has this person
+  chosen" is shared, and "what should they see if they have chosen nothing" is the
+  game's. Which needed two supporting changes — an unrecognised stored value has
+  to read as *unset* rather than as English, or there is nothing for a game to
+  have an opinion about; and neither game may write the language back on mount,
+  because that turns "I have not chosen" into "I chose English" the first time
+  anybody opens a table and would have silently defeated the new default for
+  everybody who had opened Exploding Kittens first. That second one is asserted
+  directly: the browser check reads `localStorage` and fails if mounting recorded
+  a choice.
+
+  All three checks were mutation-tested — restoring each bug fails exactly one
+  check and nothing else, with the reported symptom in the message.
+
 - ~~Houses and hotels~~ — step 4, and the one that makes the game reliably
   finishable. `internal/games/monopoly/game/build.go`.
 
@@ -425,6 +461,162 @@
 - Spectators for eliminated players (right now you watch the table you're on).
 - Persistence, so a server restart doesn't wipe a game in progress. — see
   "Serializable state" below; the seed change is the part that unblocks this.
+
+## Direction: Monopoly — what is left, and in what order
+
+Written down because the ordering question came up directly: finish the rules
+first, or animate first? The answer is neither wholesale — it depends on which
+animation, and the split is the whole point of this section.
+
+### The order
+
+1. **Movement animation** — the dice tumble and the token walk. First because it
+   is small, bounded, fires on *every single turn*, and is coupled to nothing
+   that is left: none of the remaining rules move a token. It also changes the
+   board's render path and the browser suite's position helpers, which is cheaper
+   to do now than after more features have piled onto the same code.
+2. **Auctions.** The cheapest real rule left — `core.Game.Window()` already
+   exists and nothing currently uses it — and it makes a declined square change
+   hands instead of sitting with the bank.
+3. **Chat** — see "Direction: chat in a room" below. Placed here, ahead of
+   trading, for one architectural reason: if trading ships first it will grow its
+   own message field for haggling, and then there are two chat systems. Chat is
+   the room's, not a game's.
+4. **Trading.** The biggest hole in the game now that houses are in, because
+   houses need a *complete* colour set and the dice hand you one only by luck:
+   `monopoly.js` says as much, and reports building rather than requiring it.
+   Trading is what turns building from a lottery into a plan. Also the most work
+   — it needs richer messages than `core.ClientMsg` carries, so it touches the
+   seam.
+5. **The rest of the animation pass** — cash ticking on a seat, a square
+   flashing as it is bought, card-flip choreography, and `cinema.js` flashes for
+   rent, jail and bankruptcy. Deliberately *after* the rules: these are driven by
+   money and prompt events, and auctions and trading both add new ones. Designing
+   the beats against an incomplete event vocabulary means designing them twice.
+6. **Refinements**, in descending order of how much anybody would notice:
+   bankruptcy paying the creditor rather than the bank; a forced sale when a rent
+   falls due (needs a phase — somebody has to be asked which buildings go);
+   mortgaging a bare deed; building during somebody else's turn.
+
+### The animation plan
+
+**Nothing needs installing.** No engine, no canvas, no library — CSS transforms
+plus the queue already in `web/core/cinema.js`. Ebitengine was considered and
+turned down: it would cost the Burmese text shaping the browser gives for free, a
+4–8MB WASM download for players joining on mobile data, and every one of the 161
+DOM assertions in `web/testing/`. It remains the right tool for a *different*
+product — an offline or single-player Monopoly with no server.
+
+Four things are already in place:
+
+- **The beat queue.** `cinema.js` solves the hard part: beats arrive in bursts
+  (roll → move → pass GO → rent → card, all in one state) and playing them on
+  top of each other reads as a rendering fault. It queues, plays one at a time,
+  and caps the backlog at three.
+- **The sequencing.** `freshEvents(v)` returns the new events in order and its
+  seq counters already handle reconnect, new round and missed-while-away.
+  Monopoly's `onState` calls it and throws the result away today.
+- **Where a token came from.** `EvMoved` carries the destination in `tile` and
+  the step count in `count`, so `from = ((tile - count) % 40 + 40) % 40`. That is
+  what lets a token walk square by square, which is what makes passing GO legible
+  instead of a diagonal slide across the board.
+- **The dice faces.** `v.dice` is both faces already and `dieEl()` draws real
+  pips. A roll is: random faces for ~600ms, then settle on the true ones.
+
+**The one blocker.** `renderBoard()` destroys and recreates every token on every
+state (`.tile-tokens` → `replaceChildren()`), and a transition needs the same DOM
+node to survive the update. So tokens move into one absolutely-positioned layer
+over the board, keyed by player id, driven by `transform: translate(...)` off the
+target square's rect. Animate `transform`, never `left`/`top` — it is
+GPU-composited and will not force layout on a 40-cell grid.
+
+**The design decision.** The board renders the authoritative position today.
+Animation means holding a second, *presented* position that lags the server's and
+catches up. When a new state lands mid-animation, snap to truth and drop the
+remaining beats: the alternative is a client that drifts further behind the
+longer the game runs. And **never gate input on animation** — the server is
+authoritative, and a Roll button that unlocks only when the token stops moving
+makes the game feel broken. Animate behind the interaction.
+
+Reach for `element.animate()` over CSS transitions: it returns a promise, so
+`await el.animate(...).finished` makes a beat queue read like the sequence it is,
+with no `setTimeout` arithmetic.
+
+**Testing, which is the part that gets forgotten.** Animation breaks every check
+that reads a position — `positions(host)`, "both players' tokens start on GO",
+and the build loop that taps squares. The fix is that `prefers-reduced-motion`
+and the test switch are the *same mechanism*: make every animation collapse to
+nothing under that preference, and set `page.emulateMedia({ reducedMotion:
+"reduce" })` in `lib.js`'s `seat()`. Accessibility and deterministic tests come
+out of one change, and it earns one new check — that a token *does* animate when
+motion is allowed.
+
+## Direction: chat in a room
+
+Wanted for every game, not just Monopoly — haggling over a trade, but also the
+ordinary business of a party game played across a network rather than a table.
+
+**Chat belongs to `internal/room`, not to `core.Game`.** This is the whole design
+and everything else follows from it. `handleMsg` already handles three of its own
+message types — `start`, `lobby` and `avatar` — before the game sees anything,
+and crucially *before* the `if !r.game.Started()` guard. Chat is the fourth, and
+lands in the same place. Which means it works in the lobby, during a game, after
+a game is over, and for a game nobody has written yet, for free. Routing it
+through `Game.Submit` instead would make all four games implement it identically
+and still leave the lobby silent.
+
+`ClientMsg.Avatar` is the precedent for the field, too, with its comment already
+saying "Shell-level, handled by the room itself."
+
+### What comes free
+
+- **Ordering.** The room is single-writer, so there is no race on message order
+  and no sequencing work to do.
+- **The wire shape.** `core.Entry` already carries `ActorID`, `Text`, `Seq` and
+  `OnlyFor`. A chat line is an Entry with `Kind: "chat"`. Room-authored entries
+  already exist — `{Kind: "joined", ActorID: m.ID}` — so this is not a new idea.
+- **Resync.** `feed.js` already appends only what is new, rebuilds on a detected
+  gap, and leaves a reader who has scrolled back where they were. Chat inherits
+  all of it by using the same seq mechanism.
+- **XSS, by construction.** Every line is written with `textContent`, never
+  `innerHTML`. Keep it that way and free text from strangers is inert.
+- **Burmese input.** A DOM `<input>` gets the platform's Myanmar keyboard and IME
+  for nothing. Another entry on the ledger against ever moving the client to a
+  canvas.
+
+### What must NOT be reused
+
+**Not the same buffer.** `r.logbuf = nil` on dealing and on returning to the
+lobby — so a conversation kept in the play-by-play would be wiped the moment a
+new hand is dealt. Chat needs its own ring buffer with its own cap, cleared only
+when the room is.
+
+**Not the same panel.** The play-by-play is a *record* people scroll back
+through; chat is conversation. Merged, a chatty table buries "Aung bought Bagan".
+Same plumbing, separate list. On desktop a second pane or a tab in
+`.side-panel`; on a phone a tabbed region — `Play by play | Chat` with an unread
+badge — because the space under the board was only just reclaimed and there is
+not room for two stacked panels.
+
+**Not the private path.** Chat must go in the *shared* buffer. Private entries
+are never replayed (documented at length in step 2), so private chat would
+vanish on any reconnect — a phone going to sleep would eat the conversation.
+
+### What will bite
+
+- **Rate limiting.** Without it one client floods the room goroutine. A per-
+  connection token bucket where the message is handled.
+- **A length cap**, server-side, and a cap on the ring buffer: rooms are
+  in-memory, so an unbounded chat log is a per-room leak.
+- **Moderation.** The public lobby means strangers can meet. v1 needs nothing
+  more than the caps above plus the existing mute, but it is worth knowing that
+  this is the first feature that lets one player type at another.
+- **Not a prerequisite for trading.** A trade must be structured state —
+  offer, counter, accept — or it ends in "I said I'd give you Bagan" with nothing
+  to enforce. Chat makes haggling *pleasant*; it must not become the mechanism.
+
+Deliberately not in v1: typing indicators, emoji reactions, per-player mute,
+history that outlives the room.
 
 ## Direction: multi-game core
 

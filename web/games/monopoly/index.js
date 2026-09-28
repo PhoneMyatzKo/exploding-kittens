@@ -39,7 +39,11 @@ const ui = {
 
 // ────────────────────────────────────────────────────────── money and language
 
-const lang = () => storedLang();
+// Burmese unless this person has said otherwise, anywhere. This is Monopoly
+// *Myanmar*: every square is named in Burmese first, and opening it in English
+// makes the localisation something you have to go and find. The fallback is only
+// a fallback — an explicit pick, here or in another game, wins and is remembered.
+const lang = () => storedLang("my");
 
 // Kyat, grouped. Written out in full wherever there is room, because "how much
 // have I got" is the question the whole game is about.
@@ -162,9 +166,13 @@ const mod = {
     ctx = context;
     ui.inspecting = -1;
 
+    // Before the fetch, not after: the markup ships with EN highlighted, and
+    // this game opens in Burmese, so waiting for the board would show the wrong
+    // pill lit for as long as the request takes. Nothing here needs the board.
+    applyLang(lang(), false);
+
     await loadBoard();
     buildBoard();
-    applyLang(lang());
     // mount() is not awaited by the shell, and the board is a fetch — so a state
     // that arrived while it was in flight has already been rendered against an
     // empty grid. Draw it again now that there is a board to draw on.
@@ -778,8 +786,15 @@ function whyNotBuildable(v, i, tile, level) {
 
 // ────────────────────────────────────────────────────────── chrome
 
-function applyLang(next) {
-  setStoredLang(next);
+// applyLang paints the language on screen, and remembers it only when the person
+// actually chose it.
+//
+// The distinction is the whole of Monopoly's Burmese default: mount() calls this
+// with the fallback, and writing that back would record it as a decision — after
+// which every other game would open in Burmese too, and this game's default could
+// never be changed again for anybody who had once opened it. See storedLang().
+function applyLang(next, persist = true) {
+  if (persist) setStoredLang(next);
   for (const [id, on] of [["lang-en", next === "en"], ["lang-my", next === "my"]]) {
     const el = $(id);
     if (!el) continue;
