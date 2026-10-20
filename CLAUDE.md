@@ -38,6 +38,16 @@ static/            embedded media: /cards, /media, /avatars, /audio, /video
 multi-game core" and "Direction: the web client, per game") and the rules
 below.
 
+## The owner's plan
+
+The games are free and just for fun. The site pays for itself through the
+owner's Odoo e-commerce shop (dolls, pencil bags, slim bags and school supplies
+for teens). The shop link is on the menu only (top-bar button + banner,
+`web/core/shop.js`), never on a game table. Settings: `SHOP_URL` (default
+`https://shopping.boardgameroom.online`, empty = hidden) and `SHOP_NAME`
+(default "Our Shop"), served at `GET /api/site`. The game site itself is
+https://boardgameroom.online.
+
 ## Rules to keep
 
 - Live game state (hands, deck order, phase) stays in memory. Postgres only
@@ -55,7 +65,8 @@ below.
 
 ## Analytics, suggestions and Odoo
 
-Env vars: `DATABASE_URL`, `GEOIP_DB` (.mmdb country file), `REPORT_TOKEN`.
+Env vars: `DATABASE_URL`, `GEOIP_DB` (.mmdb country file), `REPORT_TOKEN`
+(plus `SHOP_URL` and `SHOP_NAME` for the shop link).
 Flag: `-trust-proxy`.
 
 | Route | Access | Use |

@@ -28,7 +28,13 @@
 <section id="menu" class="screen menu">
   <header class="topnav">
     <span class="brand">🎲 Board Games</span>
-    <span id="sound-menu"></span>
+    <span class="topnav-end">
+      <!-- The owner's shop. Hidden until /api/site names one; core/shop.js. -->
+      <a id="shop-top" class="shop-top" target="_blank" rel="noopener" hidden>
+        🛍️ <span id="shop-top-name">Our Shop</span>
+      </a>
+      <span id="sound-menu"></span>
+    </span>
   </header>
 
   <main class="menu-body">
@@ -39,6 +45,28 @@
 
     <p id="menu-status" class="menu-status">Loading games…</p>
     <ul id="game-list" class="game-list"></ul>
+
+    <!-- The shop banner. The games are free to play; this is what keeps the
+         site running. The whole card is one link, opened in a new tab so a
+         room in progress is never lost. Filled by core/shop.js. -->
+    <aside id="shop-banner" class="shop-banner" hidden aria-label="Our shop">
+      <a id="shop-banner-link" class="shop-banner-link" target="_blank" rel="noopener">
+        <span class="shop-banner-art" aria-hidden="true">🧸✏️👜</span>
+        <span class="shop-banner-text">
+          <b class="shop-banner-title">🛍️ <span id="shop-banner-name">Our Shop</span></b>
+          <span class="shop-banner-sub">Cute dolls, pencil bags, slim bags and fancy things
+            for school and every day, for teens.</span>
+          <span class="shop-chips">
+            <span class="shop-chip">🧸 Dolls</span>
+            <span class="shop-chip">✏️ Pencil bags</span>
+            <span class="shop-chip">👜 Slim bags</span>
+            <span class="shop-chip">🎒 School supplies</span>
+          </span>
+          <small class="shop-banner-note">The games here are always free. Our shop keeps them running.</small>
+        </span>
+        <span class="shop-banner-cta">Visit the shop ↗</span>
+      </a>
+    </aside>
 
     <!-- The way to ask for the next game. The form itself is built in
          core/suggest.js and shown in the shared modal. -->

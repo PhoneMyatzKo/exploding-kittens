@@ -24,6 +24,8 @@ func main() {
 		"take the player's address from X-Forwarded-For (only behind a reverse proxy)")
 	flag.Parse()
 
+	shop := shopFromEnv()
+
 	an := openAnalytics(*trustProxy)
 	defer an.close()
 
@@ -32,7 +34,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(mgr, an.Analytics),
+		Handler:           server.New(mgr, an.Analytics, shop),
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would guillotine long-lived WebSocket connections.
 	}
@@ -52,6 +54,22 @@ func main() {
 		log.Fatalf("listen: %v", err)
 	}
 	log.Println("bye")
+}
+
+// defaultShopURL is the owner's Odoo store. The games are free to play; the
+// shop banner on the menu is how the site pays for itself.
+const defaultShopURL = "https://shopping.boardgameroom.online"
+
+// shopFromEnv reads the shop link shown on the menu.
+//
+//	SHOP_URL   where the link goes; set it empty to hide the shop
+//	SHOP_NAME  the name on the banner and the button (default "Our Shop")
+func shopFromEnv() server.Shop {
+	shop := server.Shop{URL: defaultShopURL, Name: os.Getenv("SHOP_NAME")}
+	if u, ok := os.LookupEnv("SHOP_URL"); ok {
+		shop.URL = u
+	}
+	return shop
 }
 
 type analyticsSetup struct {

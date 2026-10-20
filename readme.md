@@ -465,6 +465,36 @@ fails if any card ID reaches a player who shouldn't see it.
 The rules in `internal/games/kittens/game` know nothing about JSON, sockets or players'
 connections, which is why the interesting bugs are catchable with `go test`.
 
+## The plan: free games, and a shop
+
+The games on [boardgameroom.online](https://boardgameroom.online) are free and
+just for fun: no sign-up, no payments, no ads inside a game. The site pays for
+itself through the owner's own Odoo online shop,
+[shopping.boardgameroom.online](https://shopping.boardgameroom.online), which
+sells fancy things for teenagers: dolls, pencil bags, slim bags and school
+supplies.
+
+So the menu shows the shop clearly, in two places:
+
+- a **🛍️ Our Shop** button in the top bar, always in view;
+- a banner under the games, with what the shop sells.
+
+Neither appears on the game table, so play is never interrupted, and both open
+in a new tab, so a room in progress is never lost. Links carry
+`utm_source=boardgameroom` (plus `utm_medium=topbar` or `banner`) so the shop's
+Odoo can count visitors from the games.
+
+The link is a server setting, so moving the shop needs no code change:
+
+```sh
+SHOP_URL=https://shopping.boardgameroom.online SHOP_NAME='Our Shop' go run ./cmd/server
+SHOP_URL= go run ./cmd/server     # empty: no shop link at all
+```
+
+Without `SHOP_URL` the server uses the shop above, and `SHOP_NAME` defaults to
+*Our Shop*. Only `http`/`https` addresses are accepted. The page reads both
+from `GET /api/site`.
+
 ## Play report
 
 Optionally, the server records which game each room plays, how many players

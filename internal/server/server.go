@@ -19,8 +19,8 @@ import (
 )
 
 // New returns the complete handler for the game server. Pass Analytics{} to run
-// without recording or reports.
-func New(mgr *room.Manager, an Analytics) http.Handler {
+// without recording or reports, and Shop{} to show no shop.
+func New(mgr *room.Manager, an Analytics, shop Shop) http.Handler {
 	// Card faces are drawn per deal out of the scans that shipped in this binary,
 	// so the engine has to be told what is on offer before the first deck is
 	// built. Here rather than in main so that anything standing the stack up —
@@ -101,6 +101,9 @@ func New(mgr *room.Manager, an Analytics) http.Handler {
 	mux.HandleFunc("GET /api/games", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string][]games.Info{"games": games.All()})
 	})
+
+	// Server settings the shell shows: today, the shop link on the menu.
+	mux.HandleFunc("GET /api/site", siteHandler(shop))
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
 		// Public unless the body says otherwise, so an empty POST still behaves
