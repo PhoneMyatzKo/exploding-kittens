@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 
+	"boardgame/kittens/internal/analytics"
 	"boardgame/kittens/internal/games"
 	"boardgame/kittens/internal/games/kittens/game"
 	"boardgame/kittens/internal/room"
@@ -17,8 +18,9 @@ import (
 	"boardgame/kittens/web"
 )
 
-// New returns the complete handler for the game server.
-func New(mgr *room.Manager) http.Handler {
+// New returns the complete handler for the game server. Pass Analytics{} to run
+// without recording or reports.
+func New(mgr *room.Manager, an Analytics) http.Handler {
 	// Card faces are drawn per deal out of the scans that shipped in this binary,
 	// so the engine has to be told what is on offer before the first deck is
 	// built. Here rather than in main so that anything standing the stack up —
@@ -132,6 +134,7 @@ func New(mgr *room.Manager) http.Handler {
 			visibility = "public"
 		}
 		log.Printf("room %s created (%s, %s)", rm.Code, slug, visibility)
+		an.Recorder.RoomCreated(rm.Code, slug, public)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"code": rm.Code, "public": public, "game": slug,
 		})
@@ -154,7 +157,20 @@ func New(mgr *room.Manager) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]int{"rooms": mgr.Count()})
 	})
 
-	mux.Handle("GET /ws", ws.Handler(mgr))
+	// Admin-only: who plays which game, from which country, and how full the
+	// rooms get. Read by the Odoo module; anyone without the token gets 403.
+	mux.HandleFunc("GET /api/report", reportHandler(an))
+	// The raw rows behind the report, and the players' game ideas, for the
+	// Odoo module's hourly sync. Same token.
+	mux.HandleFunc("GET /api/export", exportHandler(an))
+	mux.HandleFunc("GET /api/suggestions", listSuggestionsHandler(an))
+
+	// Public: the "Suggest a game" form on the menu.
+	mux.HandleFunc("POST /api/suggestions", suggestHandler(an))
+
+	mux.Handle("GET /ws", ws.Handler(mgr, func(req *http.Request, rm *room.Room, playerID string) {
+		an.Recorder.PlayerJoined(rm.Code, playerID, analytics.ClientIP(req, an.TrustProxy))
+	}))
 	return mux
 }
 
