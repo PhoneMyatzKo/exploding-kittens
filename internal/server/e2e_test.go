@@ -128,7 +128,7 @@ func (p *player) send(t *testing.T, msg room.ClientMsg) {
 func newTestServer(t *testing.T) (string, *room.Manager) {
 	t.Helper()
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr))
+	srv := httptest.NewServer(New(mgr, Analytics{}))
 	t.Cleanup(func() {
 		srv.Close()
 		mgr.Shutdown()
