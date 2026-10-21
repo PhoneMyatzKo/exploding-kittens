@@ -83,11 +83,11 @@ func TestAdminEndpointsRefuseWithoutToken(t *testing.T) {
 
 func TestSuggestionsAndExport(t *testing.T) {
 	store := testStore(t, "ek_suggest_test")
-	rec := store.NewRecorder(nil)
+	rec := analytics.NewRecorder(store, nil)
 
 	const token = "test-token"
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Token: token}))
+	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Suggestions: store, Token: token}))
 	t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 
 	if got, body := postSuggestion(t, srv.URL, analytics.SuggestionInput{GameName: "Poker", Category: "card"}); got != http.StatusBadRequest {

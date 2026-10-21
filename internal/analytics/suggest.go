@@ -83,6 +83,12 @@ type Suggestion struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// SuggestionSaver keeps a suggestion that has already been through Clean and
+// returns its id. Store and Odoo both are one.
+type SuggestionSaver interface {
+	AddSuggestion(ctx context.Context, in SuggestionInput, c Country) (int64, error)
+}
+
 // AddSuggestion stores a suggestion that has already been through Clean.
 // Unlike rooms and joins it is written straight away rather than through the
 // Recorder: the player is waiting to hear whether it was saved.

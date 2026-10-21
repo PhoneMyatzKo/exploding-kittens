@@ -99,7 +99,7 @@ func testStore(t *testing.T, schema string) *analytics.Store {
 
 func TestReportCountsRoomsPlayersAndCountries(t *testing.T) {
 	store := testStore(t, "ek_report_test")
-	rec := store.NewRecorder(nil)
+	rec := analytics.NewRecorder(store, nil)
 
 	const token = "test-token"
 	mgr := room.NewManager()
