@@ -60,7 +60,7 @@ func (l *suggestLimiter) allow(addr string) bool {
 func suggestHandler(an Analytics) http.HandlerFunc {
 	limiter := newSuggestLimiter()
 	return func(w http.ResponseWriter, r *http.Request) {
-		if an.Store == nil {
+		if an.Suggestions == nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"error": "suggestions are not switched on for this server",
 			})
@@ -84,7 +84,7 @@ func suggestHandler(an Analytics) http.HandlerFunc {
 			return
 		}
 
-		id, err := an.Store.AddSuggestion(r.Context(), in, an.Geo.Country(ip))
+		id, err := an.Suggestions.AddSuggestion(r.Context(), in, an.Geo.Country(ip))
 		if err != nil {
 			log.Printf("suggest: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save it, please try later"})
