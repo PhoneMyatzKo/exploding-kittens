@@ -19,6 +19,7 @@ import {
 import { openModal, closeModal } from "./core/modal.js";
 import { resetFeed } from "./core/feed.js";
 import { toast } from "./core/toast.js";
+import { mountSuggest } from "./core/suggest.js";
 import {
   mountChat, configureChat, chatMessage, resetChat, setChatViewer,
   showChatLauncher, openChat, chatIsOpen,
@@ -822,6 +823,7 @@ document.addEventListener("keydown", (e) => {
 
 configureChat({ send });
 mountChat();
+mountSuggest();
 
 registerSound({ tracks: SHELL_TRACKS });
 mountMuteButtons(SHELL_SLOTS);
