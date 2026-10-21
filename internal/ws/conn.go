@@ -114,11 +114,17 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
+// JoinHook is told about every successful join, reconnects included, with the
+// request it arrived on. It runs on the connection's goroutine, so it must not
+// block.
+type JoinHook func(req *http.Request, rm *room.Room, playerID string)
+
 // Handler serves GET /ws?code=ABCD&name=Alice&token=…
 //
 // The token is the browser's claim on a seat; when it matches an existing member
 // the player reconnects into their old hand instead of joining as someone new.
-func Handler(mgr *room.Manager) http.HandlerFunc {
+// onJoin may be nil.
+func Handler(mgr *room.Manager, onJoin JoinHook) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		q := req.URL.Query()
 		rm, err := mgr.Get(q.Get("code"))
@@ -142,6 +148,9 @@ func Handler(mgr *room.Manager) http.HandlerFunc {
 			time.Sleep(200 * time.Millisecond)
 			c.Close()
 			return
+		}
+		if onJoin != nil {
+			onJoin(req, rm, playerID)
 		}
 
 		hello, _ := json.Marshal(map[string]string{
