@@ -14,8 +14,13 @@ import (
 // Analytics is the optional reporting side of the server. The zero value turns
 // it off: nothing is recorded and the report endpoint answers 403.
 type Analytics struct {
+	// Store is nil when analytics go to Odoo; the report and export routes
+	// then answer 503, since Odoo keeps the rows.
 	Store    *analytics.Store
 	Recorder *analytics.Recorder
+	// Suggestions keeps the "Suggest a game" form: the Store or Odoo. Nil
+	// turns the form off.
+	Suggestions analytics.SuggestionSaver
 	// Geo places a suggestion's sender in a country. Nil is fine: LAN or Unknown.
 	Geo *analytics.Locator
 	// Token guards the report. The Odoo module sends it as

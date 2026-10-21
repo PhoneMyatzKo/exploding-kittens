@@ -84,3 +84,22 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	return nil
 }
+
+// RoomCreated stores a new room. It makes Store a Sink for the Recorder.
+func (s *Store) RoomCreated(ctx context.Context, ev RoomEvent) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO rooms (code, game_slug, is_public, created_at) VALUES ($1, $2, $3, $4)`,
+		ev.Code, ev.GameSlug, ev.Public, ev.At)
+	return err
+}
+
+// PlayerJoined stores a join. A reconnect into the same seat is ignored by the
+// unique constraint.
+func (s *Store) PlayerJoined(ctx context.Context, ev JoinEvent) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO room_players (room_id, player_id, country_code, country_name, joined_at)
+		SELECT id, $2, $3, $4, $5 FROM rooms WHERE code = $1 ORDER BY id DESC LIMIT 1
+		ON CONFLICT (room_id, player_id) DO NOTHING`,
+		ev.Code, ev.PlayerID, ev.CountryCode, ev.CountryName, ev.At)
+	return err
+}
