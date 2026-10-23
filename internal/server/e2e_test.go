@@ -125,10 +125,15 @@ func (p *player) send(t *testing.T, msg room.ClientMsg) {
 	}
 }
 
+// testPartyKey unlocks the catalogue's preview games for the tests that want to
+// reach one. A fixed string rather than the binary's default, so these tests go
+// on meaning the same thing if that default is ever changed.
+const testPartyKey = "open-sesame"
+
 func newTestServer(t *testing.T) (string, *room.Manager) {
 	t.Helper()
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr))
+	srv := httptest.NewServer(New(mgr, testPartyKey))
 	t.Cleanup(func() {
 		srv.Close()
 		mgr.Shutdown()

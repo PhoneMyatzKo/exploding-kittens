@@ -30,6 +30,12 @@ func main() {
 	// rewritten. Thirty seconds of a board game is a turn or two.
 	stateEvery := flag.Duration("state-every", 30*time.Second,
 		"how often to checkpoint games in progress")
+	// Unlocks the catalogue's preview games — the ones that work but are not
+	// ready to be shown to everybody who opens the page. Typed into the menu's
+	// hidden button; see internal/server.New for what it is and is not.
+	// Empty locks them for everyone, which is the right way for a gate to fail.
+	partyKey := flag.String("party-key", "partytest123",
+		`password that reveals preview games on the menu ("" to hide them from everyone)`)
 	flag.Parse()
 
 	mgr := room.NewManager()
@@ -48,7 +54,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(mgr),
+		Handler:           server.New(mgr, *partyKey),
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would guillotine long-lived WebSocket connections.
 	}

@@ -12,6 +12,7 @@
 import { $ } from "./core/dom.js";
 import {
   storedName, setStoredName, tokenFor, setTokenFor, storedPublic, setStoredPublic,
+  partyKey, setPartyKey,
 } from "./core/store.js";
 import {
   register as registerSound, setTrack, armAudio, mountMuteButtons,
@@ -170,9 +171,17 @@ function leaveRoom() {
 // rather than showing an empty page that looks broken.
 const catalogueOfGames = { list: [], loaded: false };
 
+// partyHeaders carries the preview password, when one is held. The server
+// decides what it unlocks; this only passes it along. Sent on the two requests
+// that can reveal or open a preview game, and on nothing else.
+function partyHeaders() {
+  const k = partyKey();
+  return k ? { "X-Party-Key": k } : {};
+}
+
 async function loadGames() {
   try {
-    const res = await fetch("/api/games");
+    const res = await fetch("/api/games", { headers: partyHeaders() });
     if (!res.ok) throw new Error("server said no");
     catalogueOfGames.list = (await res.json()).games || [];
     catalogueOfGames.loaded = true;
@@ -747,7 +756,7 @@ $("create-btn").onclick = async () => {
   try {
     const res = await fetch("/api/rooms", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...partyHeaders() },
       body: JSON.stringify({ public: storedPublic(), game: app.game }),
     });
     if (!res.ok) throw new Error("server said no");
@@ -787,6 +796,87 @@ $("browser-back").onclick = () => showHome();
 // The trigger is the shell's and the panel is the game's, so this asks rather
 // than reaching for an element that may not be mounted yet.
 $("rules-lobby").onclick = () => { if (mounted.mod) mounted.mod.showRules(true); };
+
+// ─────────────────────── the preview gate ───────────────────────
+//
+// A password that reveals games still being tested, so an unfinished one can go
+// to main without being the first thing a visitor sees. The server holds the
+// real decision — it filters the catalogue and refuses to open a room for a
+// preview game — and this is only the way to type the password in. Hiding the
+// tiles in JavaScript alone would be a curtain with no wall behind it.
+
+function paintPtrButton() {
+  const btn = $("ptr-btn");
+  if (!btn) return;
+  const on = Boolean(partyKey());
+  btn.classList.toggle("on", on);
+  btn.textContent = on ? "PTR 🔓" : "PTR";
+  btn.title = on ? "Preview games are showing — tap to hide them again" : "Preview";
+}
+
+async function askForPartyKey() {
+  // Already in: tapping again puts the games away. Useful for checking the
+  // locked state without clearing site data, and it means the button is never
+  // a dead end.
+  if (partyKey()) {
+    setPartyKey("");
+    paintPtrButton();
+    await loadGames();
+    toast("Preview games hidden");
+    return;
+  }
+
+  const field = document.createElement("input");
+  field.type = "password";
+  field.className = "code-input ptr-input";
+  field.autocomplete = "off";
+  field.placeholder = "Password";
+
+  const { ok } = openModal("ptr", {
+    title: "Preview",
+    body: "Games still being tested.",
+    extra: [field],
+    ok: "Unlock",
+    alt: "Cancel",
+  });
+
+  const submit = async () => {
+    const typed = field.value.trim();
+    if (!typed) return;
+    let good = false;
+    try {
+      const res = await fetch("/api/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: typed }),
+      });
+      good = res.ok;
+    } catch {
+      toast("Couldn't reach the server.");
+      return;
+    }
+    if (!good) {
+      // The modal stays open so the password can be retyped without hunting for
+      // the button again.
+      field.value = "";
+      field.focus();
+      toast("That isn't the password.");
+      return;
+    }
+    setPartyKey(typed);
+    closeModal();
+    paintPtrButton();
+    await loadGames();
+    toast("Preview games unlocked");
+  };
+
+  ok.onclick = submit;
+  field.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+  field.focus();
+}
+
+$("ptr-btn").onclick = askForPartyKey;
+paintPtrButton();
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

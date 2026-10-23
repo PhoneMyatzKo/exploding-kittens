@@ -23,6 +23,7 @@ const browser = await launch();
 
 try {
   await theBoard();
+  await theTokenWalks();
   await onAPhone();
   await aGame();
 } catch {
@@ -221,6 +222,150 @@ async function theBoard() {
 
       await safeClick(host.$("#lang-en"), 1500);
       await sleep(250);
+    });
+  } finally {
+    for (const p of players) await p.page.context().close();
+  }
+}
+
+// ────────────────────────────────────────────────────────── it actually moves
+
+// Every other script in the suite runs with reduced motion on, so a token
+// arrives instantly and nothing here would notice if the walk were broken,
+// removed, or never written. This is the one place motion is switched on, and
+// it is the only check that can tell "it moves" from "it teleports".
+async function theTokenWalks() {
+  const players = [
+    await seat(browser, "Aung", { motion: "no-preference" }),
+    await seat(browser, "Bo", { motion: "no-preference" }),
+  ];
+  const [host] = players;
+
+  try {
+    await step("a table is dealt with motion allowed", async () => {
+      const code = await host.create({ game: GAME });
+      await players[1].join(code);
+      for (const p of players) {
+        await waitFor(async () => (await p.lobbyNames()).length === 2, { what: "both seats" });
+      }
+      await host.deal();
+      for (const p of players) await p.waitForScreen("table");
+      await host.page.waitForSelector("#board .tile", { timeout: 5000 });
+    });
+
+    await check("the tokens live in one layer, not inside the squares", async () => {
+      // The refactor this whole feature stands on. A token parented to a square
+      // is a token that gets destroyed every time that square re-renders, which
+      // is why nothing could be animated before.
+      const m = await host.page.evaluate(() => ({
+        inLayer: document.querySelectorAll("#token-layer .token").length,
+        inTiles: document.querySelectorAll(".tile .token").length,
+        layers: document.querySelectorAll("#token-layer").length,
+      }));
+      assert(m.layers === 1, `${m.layers} token layers on the board`);
+      assert(m.inLayer === 2, `${m.inLayer} tokens in the layer, want 2`);
+      assert(m.inTiles === 0, `${m.inTiles} tokens are still parented to a square`);
+    });
+
+    // The claim is not merely "it animates" — `.token` carries a CSS transition,
+    // so the transform slides smoothly between any two points whether or not a
+    // walk ever runs. The first version of this check asserted exactly that and
+    // passed with the walk deleted. What is actually being claimed is the
+    // *route*: the piece goes round the ring one square at a time, because the
+    // straight line between two squares on different edges is a diagonal across
+    // the middle of the board, and watching the corner go by is what makes
+    // passing GO legible.
+    await check("a token walks round the board rather than cutting across it", async () => {
+      let animated = false, moves = 0;
+      let cornersTested = 0, cornersWalked = 0;
+      const trace = [];
+
+      // Budgeted generously rather than tightly: a turn can be spent in jail,
+      // reading a card or answering an offer, and the check needs a *corner* to
+      // say anything at all. Stops as soon as it has two.
+      for (let turn = 0; turn < 22 && cornersTested < 2; turn++) {
+        const roller = await whoeverCanRoll(players);
+        if (!roller) continue; // a prompt may clear on the next pass
+        const from = await tokenSquare(roller);
+
+        // The squares the piece is nearest to as it goes.
+        //
+        // The window has to span the whole turn, not just the walk: the dice
+        // tumble for 850ms and are then held for 700ms so the throw can be read,
+        // so the token does not set off for about a second and a half. Sampling
+        // only the first second would watch a stationary piece and conclude it
+        // had teleported. See the pacing block in games/monopoly/index.js — if
+        // those numbers change, this has to follow.
+        const visited = new Set();
+        const shapes = new Set();
+        await safeClick(roller.$("#roll-btn"), 2000);
+        for (let i = 0; i < 110; i++) {
+          const probe = await tokenProbe(roller);
+          if (probe.transform) shapes.add(probe.transform);
+          if (probe.near >= 0) visited.add(probe.near);
+          await sleep(20);
+        }
+        await sleep(500); // let the walk settle before reading where it landed
+
+        const to = await tokenSquare(roller);
+        trace.push(`${roller.name}:${from}>${to}`);
+        if (to === from) continue;
+        moves++;
+        if (shapes.size > 2) animated = true;
+
+        // A corner between start and finish is what makes the two routes
+        // different. Walking passes *over* the corner square; the straight line
+        // cuts inside it and never goes near. Anything that does not round a
+        // corner tells us nothing either way, so it is not counted.
+        const corner = cornerBetween(from, to);
+        if (corner < 0) continue;
+        cornersTested++;
+        if (visited.has(corner)) cornersWalked++;
+      }
+
+      assert(moves > 0, "no token moved at all");
+      assert(animated, "the token jumped between squares instead of travelling");
+      // Said out loud rather than passing on an empty set: without a corner the
+      // ring and the straight line are the same route and nothing was proved.
+      assert(cornersTested > 0,
+        `no move in ${moves} rounded a corner, so the route was never under test ` +
+        `(${trace.join(" ")})`);
+      // One, not all of them. Sampling can genuinely miss a square — the token
+      // is only over each one for about 80ms — and demanding a clean sweep would
+      // make this fail on timing rather than on behaviour. Cutting the corner
+      // scores zero, which is the thing being caught.
+      assert(cornersWalked > 0,
+        `the token rounded ${cornersTested} corner(s) and was never once seen on ` +
+        "any of them — it is cutting across rather than walking the ring");
+
+      const m = await measureBoard(host);
+      assert(m.tokensOutside === 0, `${m.tokensOutside} tokens finished outside the board`);
+    });
+
+    await check("the dice are thrown before they settle", async () => {
+      // Whoever's turn it actually is. The walk above consumed a turn, and the
+      // first version of this clicked the host's Roll button regardless — which
+      // by then was disabled, so nothing was thrown and the check read the
+      // *previous* result sitting on screen. It failed honestly rather than
+      // passing, but only by luck: one unchanging value is also what a broken
+      // tumble looks like.
+      const roller = await whoeverCanRoll(players);
+      assert(roller, "nobody could roll, so the dice were never thrown");
+
+      // Sampled from a spectator, not the roller: the tumble is driven by the
+      // event every client receives, so this also proves the throw is shown to
+      // the whole table rather than only to whoever pressed the button.
+      const watcher = players.find((p) => p !== roller) || roller;
+      const faces = new Set();
+      await safeClick(roller.$("#roll-btn"), 2000);
+      // Spanning the 850ms tumble with room to spare. The faces slow as they
+      // settle, so the last few are each on screen for most of this interval.
+      for (let i = 0; i < 30; i++) {
+        faces.add(await diceFaces(watcher));
+        await sleep(40);
+      }
+      faces.delete("");
+      assert(faces.size > 1, `the dice showed one face the whole time: ${[...faces]}`);
     });
   } finally {
     for (const p of players) await p.page.context().close();
@@ -558,9 +703,9 @@ function measureBoard(p) {
         const wm = getComputedStyle(el.querySelector(".tile-body")).writingMode;
         if (/vertical/.test(wm)) sidewaysNames++;
       }
-      const tokens = el.querySelectorAll(".token").length;
-      if (i === 0) tokensOnGo += tokens;
-      else tokensElsewhere += tokens;
+      // Tokens are no longer children of a square — they live in one layer and
+      // are positioned by transform — so they are counted after this loop, off
+      // the square each one says it is drawn on.
 
       // Houses sit on the colour band, which is a narrow strip — the mistake to
       // catch is one drawn outside the square it belongs to.
@@ -574,8 +719,24 @@ function measureBoard(p) {
       }
     }
 
+    // Where the pieces are, and whether any of them has been placed outside the
+    // board it is supposed to be standing on — the failure a transform can have
+    // that a child element never could.
+    const boardBox = grid.getBoundingClientRect();
+    let tokensOutside = 0;
+    for (const t of grid.querySelectorAll("#token-layer .token")) {
+      const sq = Number(t.dataset.square);
+      if (sq === 0) tokensOnGo++;
+      else tokensElsewhere++;
+      const r = t.getBoundingClientRect();
+      if (!r.width || !r.height ||
+          r.left < boardBox.left - 2 || r.right > boardBox.right + 2 ||
+          r.top < boardBox.top - 2 || r.bottom > boardBox.bottom + 2) tokensOutside++;
+    }
+
     return {
       tiles: grid.querySelectorAll(".tile").length,
+      tokensOutside,
       cells: cells.size,
       byIndex, bands, unpaintedBands, buyable, inTheMiddle, tokensOnGo, tokensElsewhere,
       buildings, buildingsOutside,
@@ -602,14 +763,107 @@ function squareNames(p) {
   return p.page.$$eval("#board .tile .tile-name", (els) => els.map((e) => e.textContent));
 }
 
+// Which squares the pieces are standing on, read off the tokens themselves now
+// that they live in a layer rather than inside a square. Every script in the
+// suite but theTokenWalks() runs with reduced motion, so this is the settled
+// position rather than a frame of a walk.
 function positions(p) {
-  return p.page.$$eval("#board .tile", (els) =>
-    els.flatMap((el) =>
-      [...el.querySelectorAll(".token")].map(() => Number(el.dataset.tile))).sort((a, b) => a - b));
+  return p.page.$$eval("#token-layer .token", (els) =>
+    els.map((e) => Number(e.dataset.square)).sort((a, b) => a - b));
 }
 
 function ownedCount(p) {
   return p.page.$$eval("#board .tile.owned", (els) => els.length);
+}
+
+// whoeverCanRoll answers whatever prompt is in the way — a purchase, a drawn
+// card — until somebody is able to throw, and returns them. A turn does not end
+// where you expect it to: landing on an unowned square opens an offer, and a
+// Chance square puts a card up that has to be read before anybody rolls again.
+async function whoeverCanRoll(players, tries = 12) {
+  for (let i = 0; i < tries; i++) {
+    for (const p of players) {
+      const st = await turnState(p);
+      if (st.canRoll) return p;
+      // A drawn card is face up on *everybody's* screen, but only the player who
+      // drew it gets the button. So a failed click here means "wrong screen",
+      // not "nothing to do" — carry on to the next player rather than breaking.
+      //
+      // Breaking regardless is what made this helper hang: with a spectator
+      // first in the list it pressed their hidden button, gave up, slept, and
+      // tried the same screen again every pass, so the table sat on an unread
+      // card until the whole budget was spent. It is the same trap the play loop
+      // below has a paragraph about, and I walked straight into it.
+      if (st.card) {
+        if (await safeClick(p.$("#modal-ok"), 600)) break;
+        continue;
+      }
+      if (st.offer) {
+        if (await safeClick(p.$("#buy-btn"), 600)) break;
+        if (await safeClick(p.$("#pass-btn"), 600)) break;
+        continue;
+      }
+    }
+    await sleep(150);
+  }
+  return null;
+}
+
+function diceFaces(p) {
+  return p.page.evaluate(() =>
+    [...document.querySelectorAll("#dice .die")].map((d) => d.dataset.face).join("-"));
+}
+
+// tokenProbe is one sample of the viewer's own piece mid-move: where it is, and
+// whether it is somewhere it has no business being.
+//
+// The transform is read from the *computed* style, not the inline one: during a
+// walk the Web Animations API owns the property and the inline style still holds
+// where the token was before it set off.
+//
+// `near` is the discriminating half: which square the piece is closest to right
+// now. Walking the ring puts it over every square on the way, the corner
+// included; a straight line between two edges cuts the corner off and never goes
+// near it. Nearest-centre rather than hit-testing, because a token mid-stride
+// sits between two squares and should count as the one it is closest to.
+function tokenProbe(p) {
+  return p.page.evaluate(() => {
+    const el = document.querySelector("#token-layer .token.me")
+      || document.querySelector("#token-layer .token");
+    if (!el) return { transform: "", near: -1 };
+    const t = el.getBoundingClientRect();
+    const tx = t.left + t.width / 2, ty = t.top + t.height / 2;
+
+    let near = -1, best = Infinity;
+    for (const tile of document.querySelectorAll("#board .tile")) {
+      const r = tile.getBoundingClientRect();
+      const dx = r.left + r.width / 2 - tx, dy = r.top + r.height / 2 - ty;
+      const d = dx * dx + dy * dy;
+      if (d < best) { best = d; near = Number(tile.dataset.tile); }
+    }
+    return { transform: getComputedStyle(el).transform, near };
+  });
+}
+
+// cornerBetween is the corner square passed on the way from `from` to `to`
+// going forwards, or -1 if the move stays on one side of the board. Corners are
+// GO, jail, free parking and go-to-jail — every tenth square.
+function cornerBetween(from, to) {
+  const steps = ((to - from) % 40 + 40) % 40;
+  for (let n = 1; n < steps; n++) {
+    const sq = (from + n) % 40;
+    if (sq % 10 === 0) return sq;
+  }
+  return -1;
+}
+
+// Which square the viewer's own piece is drawn on, once it has settled.
+function tokenSquare(p) {
+  return p.page.evaluate(() => {
+    const el = document.querySelector("#token-layer .token.me")
+      || document.querySelector("#token-layer .token");
+    return el ? Number(el.dataset.square) : -1;
+  });
 }
 
 // Does the log scroll, or does the page? Only one of them should, and which one

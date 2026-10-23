@@ -2,6 +2,50 @@
 
 ## Done
 
+- ~~Dice that tumble and tokens that walk~~ — the first slice of animation, and
+  the one that fires on every single turn.
+
+  **The blocker was never the animation, it was the render.** `renderBoard()`
+  emptied `.tile-tokens` and built a fresh `<i>` on whichever square each player
+  stood on, every state — so there was never a node alive long enough to animate.
+  Tokens now live in one absolutely-positioned `.token-layer` spanning the grid,
+  one element per player created once and kept, moved with `transform` (never
+  `left`/`top`: a 40-cell grid is an expensive thing to re-lay-out mid-animation).
+  `web/games/monopoly/tokens.js`.
+
+  **Two positions, kept apart.** `target` is where the server says a player is;
+  `shown` is where their token is drawn. They are equal at rest, and a walk is
+  the gap being closed one square at a time. When the queue empties, `shown`
+  snaps to `target` — so a client can never drift further behind the longer the
+  game runs.
+
+  **The walk goes the long way round**, square by square, because the short way
+  is a diagonal across the middle of the board that says nothing. Watching the
+  corner go by is what makes passing GO legible. Driven by
+  `element.animate()` with one keyframe per square — the Web Animations API
+  because it returns a promise, so a queue of beats reads as the sequence it is
+  rather than as `setTimeout` arithmetic.
+
+  **Where a token came from is derived, not sent.** `EvMoved` carries the
+  destination and the step count, so `from = ((tile - count) % 40 + 40) % 40`.
+  No new server field. Going to jail is a `jump` rather than a walk — the board
+  picked you up, there was no journey.
+
+  **Reduced motion and the test switch are the same mechanism.** Everything
+  collapses to an instant change under `prefers-reduced-motion`, and `seat()` in
+  `lib.js` now sets `reducedMotion: "reduce"` by default — which is what keeps
+  every existing check that reads a token position from racing a walk that is
+  still half way round the board. One new function, `theTokenWalks()`, is the
+  only place motion is switched on, and it is the only thing that can tell "it
+  moves" from "it teleports": it samples the computed transform during a roll
+  and asserts more than two distinct values.
+
+  **Position moved out of the DOM tree and into an attribute.** With tokens in a
+  layer, "whose piece is on Bagan" stopped being answerable from the outside, so
+  each token carries `data-square`. That is rendered state rather than an
+  exported internal — it is what the token is showing — and `positions()` and
+  `measureBoard()` read it.
+
 - ~~The log grew the page, the phone had dead space, and Monopoly opened in
   English~~ — three things reported from a real session with screenshots, and the
   first two turned out to be one line of CSS each on the same rule.
@@ -470,11 +514,9 @@ animation, and the split is the whole point of this section.
 
 ### The order
 
-1. **Movement animation** — the dice tumble and the token walk. First because it
-   is small, bounded, fires on *every single turn*, and is coupled to nothing
-   that is left: none of the remaining rules move a token. It also changes the
-   board's render path and the browser suite's position helpers, which is cheaper
-   to do now than after more features have piled onto the same code.
+1. ~~**Movement animation**~~ — done; see the Done section at the top of this
+   file. The dice tumble and the token walk, first because they are small,
+   bounded, fire on every single turn, and are coupled to nothing that is left.
 2. **Auctions.** The cheapest real rule left — `core.Game.Window()` already
    exists and nothing currently uses it — and it makes a declined square change
    hands instead of sitting with the bank.

@@ -14,6 +14,7 @@ const key = {
   visibility: "ek:visibility",
   log: "ek:log",
   lang: "ek:lang",
+  party: "ek:party",
   token: (code) => `ek:token:${code}`,
 };
 
@@ -59,3 +60,16 @@ export const storedLang = (fallback = "en") => {
 };
 export const setStoredLang = (lang) =>
   localStorage.setItem(key.lang, lang === "my" ? "my" : "en");
+
+// The party key: the password that reveals games still being tested. Remembered
+// so it is typed once rather than on every reload, and sent to the server on the
+// two requests that care about it.
+//
+// Kept here with the rest rather than treated as a credential, because that is
+// what it is — a shared password for a house party, not a login. The server has
+// the same view of it; see internal/server.New.
+export const partyKey = () => localStorage.getItem(key.party) || "";
+export const setPartyKey = (k) => {
+  if (k) localStorage.setItem(key.party, k);
+  else localStorage.removeItem(key.party);
+};

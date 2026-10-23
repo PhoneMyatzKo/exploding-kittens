@@ -12,6 +12,10 @@
 import { chromium } from "playwright";
 
 export const BASE = process.env.BASE || "http://localhost:8099";
+// The password that reveals preview games, matching the server's -party-key
+// default. Override with PARTY_KEY if the server under test was started with a
+// different one, or the games it gates will simply not be on the menu.
+export const PARTY_KEY = process.env.PARTY_KEY || "partytest123";
 export const HEADLESS = process.env.HEADED !== "1";
 export const SLOWMO = Number(process.env.SLOWMO || 0);
 
@@ -96,8 +100,31 @@ export async function launch() {
 // base overrides the server this player talks to. Only restart.js needs it: that
 // script runs its own server on its own port, because it has to stop and start it
 // and must not take the suite's out from under the other scripts.
-export async function seat(browser, name, { phone = false, base = BASE } = {}) {
-  const ctx = await browser.newContext(phone ? { viewport: PHONE, ...PHONE } : {});
+// motion defaults to "reduce" for the same reason it exists as a preference:
+// everything the client animates collapses to an instant change under it, which
+// is what keeps a check that reads a token's position from racing a walk that is
+// still half way round the board. Accessibility and a deterministic suite come
+// out of the one mechanism rather than two — a script that wants to watch
+// something move asks for "no-preference" and waits for it.
+// party unlocks the catalogue's preview games — ones that work but are not shown
+// to an ordinary visitor yet. Seeded into localStorage before the page runs,
+// which is exactly what the PTR button does once somebody types the password, so
+// a seat starts out as a person who has already been let in. Without it every
+// check against a preview game would be testing the gate instead of the game.
+// Pass `party: ""` to drive the locked state on purpose.
+export async function seat(
+  browser, name,
+  { phone = false, base = BASE, motion = "reduce", party = PARTY_KEY } = {},
+) {
+  const ctx = await browser.newContext({
+    ...(phone ? { viewport: PHONE, ...PHONE } : {}),
+    reducedMotion: motion,
+  });
+  if (party) {
+    await ctx.addInitScript((k) => {
+      try { localStorage.setItem("ek:party", k); } catch {}
+    }, party);
+  }
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.log(`  ! ${name} page error: ${e.message}`));
   return new Player(page, name, base);

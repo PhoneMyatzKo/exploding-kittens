@@ -14,6 +14,10 @@ import { $ } from "../../core/dom.js";
 import { logOpen, setStoredLogOpen, storedLang, setStoredLang } from "../../core/store.js";
 import { openModal, closeModal, modalKind } from "../../core/modal.js";
 import { renderLog, freshEvents, resetFeed, scrollLogToEnd } from "../../core/feed.js";
+import {
+  mountTokens, unmountTokens, syncTokens, placeAll, snapAll,
+  walkToken, jumpToken, forgetGeometry, reduced,
+} from "./tokens.js";
 
 // ────────────────────────────────────────────────────────── state
 
@@ -30,6 +34,9 @@ const ui = {
   // The square whose detail card is open, or -1. Tapping a square opens it,
   // because the tiles are far too small to carry a full name and a rent table.
   inspecting: -1,
+  // The resize listener, kept so unmount can take it off again. A game is
+  // mounted and unmounted repeatedly in one session.
+  resize: null,
   // Which language the drawn card was built in. A card is built once and left
   // alone while it is being read — so without this, switching language leaves it
   // in the language it was drawn in, which is the one place on screen that would
@@ -173,6 +180,12 @@ const mod = {
 
     await loadBoard();
     buildBoard();
+    // The board is sized from the viewport, so every square moves when the
+    // window does and the cached centres are stale. Cheaper than measuring on
+    // every render, and the only cost of being wrong is tokens drawn at the old
+    // size for one frame.
+    ui.resize = () => { forgetGeometry(); const g = $("board"); if (g && ctx) placeAll(g, (ctx.view() || {}).seats || []); };
+    window.addEventListener("resize", ui.resize);
     // mount() is not awaited by the shell, and the board is a fetch — so a state
     // that arrived while it was in flight has already been rendered against an
     // empty grid. Draw it again now that there is a board to draw on.
@@ -192,6 +205,10 @@ const mod = {
   },
 
   unmount() {
+    if (ui.resize) window.removeEventListener("resize", ui.resize);
+    ui.resize = null;
+    resetBeats();
+    unmountTokens();
     ctx = null;
   },
 
@@ -204,14 +221,17 @@ const mod = {
     $("table").hidden = true;
     if (modalKind() === "tile") closeModal();
     ui.inspecting = -1;
+    // Beats describe a board that is no longer on screen. Dropping them stops a
+    // walk resuming against the next game's seats.
+    resetBeats();
   },
 
-  // No cinematics in this slice — a token sliding round the board is the beat
-  // worth animating, and it belongs with the rest of the movement work rather
-  // than bolted on now. The call still has to happen: freshEvents advances the
-  // sequence counters the log diffing runs on.
+  // The beats: dice, then whatever moved. freshEvents advances the sequence
+  // counters the log diffing runs on and hands back only what is new — the
+  // first state of a connection returns nothing, which is what stops a
+  // reconnect replaying somebody else's lap.
   onState(v) {
-    freshEvents(v);
+    queueBeats(freshEvents(v), v);
   },
 
   onPrivate() {},
@@ -226,6 +246,204 @@ const mod = {
 };
 
 export default mod;
+
+// ────────────────────────────────────────────────── beats: dice and movement
+//
+// The server sends a state, and the state carries the events that produced it.
+// Several land together — a roll, a move, a lap of GO, a rent and a card can all
+// arrive in one message — and playing them on top of each other reads as a
+// rendering fault rather than as a turn. So they are queued and played one at a
+// time, the same shape core/cinema.js uses for its flashes.
+//
+// Three rules, all of them learnt the hard way elsewhere in this project:
+//
+//   * Nothing here gates input. The server is authoritative; the Roll button
+//     follows `v.me.canRoll` and never waits for a token to stop moving.
+//   * The queue is capped. A tab left in the background can come back to twenty
+//     events, and watching history is worse than missing it.
+//   * Reduced motion collapses it entirely — see tokens.js. That is the same
+//     switch the browser tests flip, so accessibility and a deterministic suite
+//     come out of one mechanism rather than two.
+const beats = {
+  queue: [], running: false, tumbling: false,
+  // Whether anything has actually played since the queue last emptied. Without
+  // it the drain below re-renders on every single state, because an idle queue
+  // "drains" the moment it is pumped — see the same note on cinema.js's
+  // `played`, which exists for exactly this reason.
+  played: false,
+};
+
+// Four is a turn's worth: roll, move, pass GO, land. Past that the table has
+// moved on and the player would be watching a replay.
+const MAX_BEATS = 4;
+
+function queueBeats(fresh, v) {
+  for (const e of fresh || []) {
+    if (e.kind === "rolled" && Array.isArray(e.dice)) {
+      beats.queue.push({ kind: "dice", dice: e.dice });
+    } else if (e.kind === "moved" && e.tile !== undefined && e.tile !== null) {
+      // Where they came from, derived rather than sent: the server gives the
+      // destination and the number of steps, and a walk needs the start.
+      const steps = Number(e.count || 0);
+      const to = Number(e.tile);
+      const from = ((to - steps) % 40 + 40) % 40;
+      beats.queue.push({ kind: "walk", who: e.actorId, from, steps });
+    } else if (e.kind === "jailed" && e.tile !== undefined && e.tile !== null) {
+      // Not a walk: the board picked them up and put them in the corner.
+      beats.queue.push({ kind: "jump", who: e.actorId, to: Number(e.tile) });
+    }
+  }
+  if (beats.queue.length > MAX_BEATS) {
+    beats.queue.splice(0, beats.queue.length - MAX_BEATS);
+  }
+  pumpBeats(v);
+}
+
+async function pumpBeats(v) {
+  if (beats.running) return;
+  const grid = $("board");
+  const seats = (v && v.seats) || (ctx && ctx.view() ? ctx.view().seats : []) || [];
+
+  const beat = beats.queue.shift();
+  if (!beat) {
+    // Nothing left to play, so the screen should agree with the server. This is
+    // the catch-up half of the design in tokens.js: shown becomes target.
+    if (grid) snapAll(grid, seats);
+
+    // Only if something actually played. An idle queue is "drained" by every
+    // state that arrives, and re-rendering on each of them would double the
+    // work and reopen a prompt the player had just dismissed.
+    if (!beats.played) return;
+    beats.played = false;
+
+    // A breath between the token stopping and the card landing on top of it.
+    // `running` stays true through it, which is what keeps the prompt held —
+    // releasing first and sleeping afterwards would let any state that arrives
+    // in the meantime open the card early, which is the bug this is fixing.
+    // Skipped entirely for anybody who asked for less motion: the pause exists
+    // to separate two animations, and for them there were none. It also keeps
+    // the browser suite, which runs reduced, from paying 200ms a turn.
+    if (!reduced()) {
+      beats.running = true;
+      try {
+        await wait(SETTLE_MS);
+      } finally {
+        beats.running = false;
+      }
+    }
+
+    // The consequences held back while the turn played out now get their
+    // render — the drawn card, the offer to buy. Equivalent to cinema.js's
+    // onIdle, which Exploding Kittens uses for the same reason: a prompt must
+    // not open on top of the beat that produced it.
+    if (ctx && ctx.view()) ctx.rerender();
+    return;
+  }
+
+  beats.running = true;
+  beats.played = true;
+  try {
+    if (beat.kind === "dice") {
+      await tumbleDice(beat.dice);
+    } else if (beat.kind === "walk" && grid) {
+      await walkToken(grid, seats, beat.who, beat.from, beat.steps);
+    } else if (beat.kind === "jump" && grid) {
+      await jumpToken(grid, seats, beat.who, beat.to);
+    }
+  } finally {
+    beats.running = false;
+  }
+  // The newest view rather than the one this beat arrived with: states keep
+  // landing while a walk plays out, and the next beat should settle against
+  // what is true now.
+  pumpBeats(ctx && ctx.view ? ctx.view() : v);
+}
+
+function resetBeats() {
+  beats.queue.length = 0;
+  beats.running = false;
+  beats.played = false;
+}
+
+// beatsBusy is "the turn is still being played out on screen".
+//
+// It gates the *consequences* of a move — the drawn card, the offer to buy —
+// and that is the difference between a turn that reads as a sequence and three
+// things happening at once. A card modal opened the instant its state arrives
+// covers the board while the token is still walking across it, so you see the
+// result before the move that caused it.
+//
+// What it must never gate is input the server would accept anyway: the Roll
+// button follows `v.me.canRoll` and is untouched by this. Holding a prompt back
+// is presentation; disabling a legal move is a broken game.
+const beatsBusy = () => beats.running || beats.queue.length > 0;
+
+// ── pacing ──
+//
+// Every number a turn is paced by lives here and in tokens.js, so the whole
+// sequence can be tuned without reading the code that uses it. A turn runs:
+//
+//   tumble ──▸ read the dice ──▸ walk the token ──▸ settle ──▸ the square acts
+//
+// Deliberately unhurried. The first version was fast enough that the dice could
+// not be read before the token had already set off, which made the three beats
+// land as one event — the whole point of sequencing them is lost if each is over
+// before it has registered.
+const TUMBLE_MS = 850;
+// The faces swap quickly at first and slow as they settle, the way real dice
+// lose energy. One interpolated interval rather than a fixed tick: a constant
+// strobe reads as a loading spinner, not as a throw.
+const TUMBLE_TICK_FAST = 55;
+const TUMBLE_TICK_SLOW = 190;
+// The beat the user actually asked for: once the dice show the real numbers,
+// they stay still long enough to be read before anything else moves.
+const DICE_READ_MS = 700;
+// The pause between a token arriving and the square telling it what it owes.
+// Short enough not to feel like a hang, long enough that the two read as two
+// things rather than one.
+const SETTLE_MS = 320;
+
+async function tumbleDice(final) {
+  const box = $("dice");
+  if (!box) return;
+  if (reduced()) {
+    drawDice(final);
+    return;
+  }
+
+  const start = performance.now();
+  beats.tumbling = true;
+  box.classList.add("rolling");
+  try {
+    for (;;) {
+      const progress = (performance.now() - start) / TUMBLE_MS;
+      if (progress >= 1) break;
+      drawDice([1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)]);
+      // Slowing as it goes, so the last few faces are each visible rather than
+      // being a blur that stops dead on the answer.
+      await wait(TUMBLE_TICK_FAST + (TUMBLE_TICK_SLOW - TUMBLE_TICK_FAST) * progress);
+    }
+  } finally {
+    // Cleared before the real faces are drawn, so a state that lands in the same
+    // tick as the settle does not get overruled by a flag nobody owns any more.
+    beats.tumbling = false;
+    box.classList.remove("rolling");
+  }
+
+  drawDice(final);
+  // Held on the result. `tumbling` is already false, so a state arriving now
+  // redraws the same faces — but the beat has not finished, which is what keeps
+  // the token still until the throw has been read. This is the pause between
+  // the dice and the move.
+  await wait(DICE_READ_MS);
+}
+
+// A declaration rather than a `const` arrow, following the convention in
+// web/testing/README.md: declarations hoist, so a helper can be used by code
+// written above it without a temporal-dead-zone surprise.
+function wait(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 // ────────────────────────────────────────────────────────── the board
 
@@ -312,11 +530,9 @@ function buildBoard() {
       el.append(houses);
     }
 
-    // Tokens are painted over the top rather than in the flow, so a piece
-    // standing on a square does not push its name out of the way.
-    const tokens = document.createElement("span");
-    tokens.className = "tile-tokens";
-    el.append(tokens);
+    // No token container per square any more: the pieces live in one layer over
+    // the whole board so they can move between squares rather than being
+    // destroyed and rebuilt on each one. See tokens.js.
 
     // Tapping a square opens its detail card. Even at this size a square cannot
     // carry a full name and a rent table, and "what does this cost" is the
@@ -324,6 +540,10 @@ function buildBoard() {
     el.onclick = () => inspect(i);
     return el;
   }));
+
+  // After the squares, and inside the same grid: the layer positions its tokens
+  // against the board's own coordinate space.
+  mountTokens(grid);
 }
 
 function renderTable(v) {
@@ -344,6 +564,11 @@ function renderTable(v) {
 function renderCard(v) {
   const showing = modalKind() === "monopoly-card";
   if (v.drawn >= 0 && v.phase === "card") {
+    // Held until the dice have settled and the token has arrived. The card is
+    // what the square did to you, so it comes after the move, not over it.
+    // Only the *opening* is held — a card that should be gone still closes
+    // below, or a stale one would sit there through the next turn.
+    if (beatsBusy()) return;
     // Rebuilt when the language changes, and otherwise left alone: it is being
     // read, and redrawing it on every state would flicker.
     if (!showing || ui.cardLang !== lang()) {
@@ -423,7 +648,6 @@ function renderBoard(v) {
     // own size and line height, and a square is the smallest thing that has to
     // get that right.
     name.lang = lang();
-    el.querySelector(".tile-tokens").replaceChildren();
 
     // Buildings: four little houses, or one hotel. Drawn as elements rather
     // than as an emoji count, because 🏠🏠🏠🏠 will not fit across a square at
@@ -443,17 +667,13 @@ function renderBoard(v) {
     }
   }
 
-  for (const s of v.seats || []) {
-    if (!s.alive) continue;
-    const el = grid.querySelector(`.tile[data-tile="${s.pos}"]`);
-    if (!el) continue;
-    const token = document.createElement("i");
-    token.className = "token";
-    token.style.background = tokenColour(v, s.id);
-    token.title = s.name;
-    if (s.id === ctx.me()) token.classList.add("me");
-    el.querySelector(".tile-tokens").append(token);
-  }
+  // Tokens are not rebuilt here any more — they live in their own layer and
+  // keep their elements so they can be animated. See tokens.js. This only has
+  // to make the layer agree with the seat list and redraw where each piece
+  // currently *is*, which during a walk is behind where the server says.
+  const seats = v.seats || [];
+  syncTokens(grid, seats, { me: ctx.me(), colourOf: (id) => tokenColour(v, id) });
+  placeAll(grid, seats);
 }
 
 // The pips a die face is made of, as positions on a three-by-three grid. Drawn
@@ -482,17 +702,26 @@ function dieEl(face) {
   return d;
 }
 
+// drawDice paints two faces and their total. Split out of renderCentre so the
+// tumble can call it forty times without the rest of the centre panel being
+// rebuilt under it.
+function drawDice(faces) {
+  const box = $("dice");
+  if (!box) return;
+  const [a, b] = faces || [0, 0];
+  box.replaceChildren();
+  if (!(a > 0 && b > 0)) return;
+  box.append(dieEl(a), dieEl(b));
+  const total = document.createElement("span");
+  total.className = "die-total";
+  total.textContent = String(a + b);
+  box.append(total);
+}
+
 function renderCentre(v) {
-  const dice = $("dice");
-  const [a, b] = v.dice || [0, 0];
-  dice.replaceChildren();
-  if (a > 0 && b > 0) {
-    dice.append(dieEl(a), dieEl(b));
-    const total = document.createElement("span");
-    total.className = "die-total";
-    total.textContent = String(a + b);
-    dice.append(total);
-  }
+  // Left alone while a throw is in the air: this runs on every state, and the
+  // tumble owns the dice until it settles on the real faces.
+  if (!beats.tumbling) drawDice(v.dice);
 
   const jailed = Boolean(v.me && v.me.jailed) && v.phase === "jail";
 
@@ -507,7 +736,9 @@ function renderCentre(v) {
   const offer = v.me ? v.me.offer : -1;
   const buy = $("buy-btn");
   const pass = $("pass-btn");
-  const open = offer >= 0 && offer < board.tiles.length;
+  // Same hold as the card: being offered a square is the consequence of landing
+  // on it, so it appears once the token has actually got there.
+  const open = offer >= 0 && offer < board.tiles.length && !beatsBusy();
   buy.hidden = !open;
   pass.hidden = !open;
   if (open) {

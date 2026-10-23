@@ -349,6 +349,30 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   gap: 12px; padding: 12px 20px;
   background: var(--brand); border-bottom: 1px solid var(--line);
 }
+
+/* The way in to games still being tested.
+   Quiet to the point of invisibility until you look for it: three letters at
+   half opacity beside the logo, which is the whole idea — somebody who has not
+   been told what it is has no reason to press it. It sits next to the brand
+   rather than floating over the menu body so it cannot land on a tile when the
+   page is narrow. `margin-right: auto` keeps it left while the mute button
+   stays right. */
+.ptr {
+  margin-right: auto;
+  border: 1px solid rgb(255 255 255 / .28);
+  background: transparent; color: #fff;
+  opacity: .45;
+  border-radius: 999px; padding: 3px 10px;
+  font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .12em;
+  cursor: pointer;
+}
+.ptr:hover, .ptr:focus-visible { opacity: .9; }
+/* Holding a key: no longer hiding, because at that point the person pressing it
+   already knows it is there and needs to see whether it is on. */
+.ptr.on { opacity: 1; border-color: rgb(255 255 255 / .7); }
+
+/* Wide enough to type a password into rather than a six-character room code. */
+.ptr-input { width: 100%; letter-spacing: normal; text-align: left; font-size: 16px; }
 .brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
 
 .menu-body {
@@ -1510,20 +1534,55 @@ input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 /* ─── tokens ─── */
 
-/* Standing on the square, over the top of everything rather than pushing the
-   name out of the way. */
-.tile-tokens {
-  position: absolute; inset: 0;
-  display: flex; flex-wrap: wrap; align-content: center; justify-content: center;
-  gap: 2px; pointer-events: none;
+/* One layer over the whole board rather than a container per square, which is
+   what lets a piece travel between squares instead of being destroyed on one
+   and rebuilt on the next. Spanning the grid by its own area, so it shares the
+   board's coordinate space and a token's transform is in board pixels.
+
+   pointer-events: none throughout — a piece standing on a square must not stop
+   you tapping that square to read its price. */
+.token-layer {
+  grid-area: 1 / 1 / -1 / -1;
+  position: relative;
+  pointer-events: none;
+  z-index: 2;
 }
 .token {
+  position: absolute; top: 0; left: 0;
   width: calc(var(--sq) * .3); height: calc(var(--sq) * .3);
   border-radius: 50%;
   border: 2px solid rgb(var(--surface-rgb) / .95);
   box-shadow: 0 1px 3px rgb(var(--scrim-rgb) / .6);
+  /* The resting state only. A walk is driven by the Web Animations API, which
+     overrides this for its duration — see tokens.js for why a transition is the
+     wrong tool for a path through forty squares. */
+  transition: transform .18s ease;
 }
 .token.me { border-color: var(--accent); }
+/* Lifted slightly while travelling, so a piece crossing a crowded corner reads
+   as being on top of the others rather than merging with them. */
+.token.walking {
+  z-index: 3;
+  box-shadow: 0 3px 8px rgb(var(--scrim-rgb) / .7);
+}
+
+/* A throw in the air. The faces are being swapped from JS; this is the shake
+   that says they are not settled yet. */
+.dice.rolling .die { animation: die-shake .22s linear infinite; }
+@keyframes die-shake {
+  0%   { transform: translateY(0) rotate(-4deg); }
+  50%  { transform: translateY(-3px) rotate(4deg); }
+  100% { transform: translateY(0) rotate(-4deg); }
+}
+
+/* Asked for less motion, and this is exactly what that preference is about:
+   pieces sliding and dice shaking. The game is unaffected — tokens still move,
+   they simply arrive. tokens.js makes the same check before animating at all,
+   so this is the belt to its braces. */
+@media (prefers-reduced-motion: reduce) {
+  .token { transition: none; }
+  .dice.rolling .die { animation: none; }
+}
 
 /* ─── the middle ─── */
 

@@ -4,6 +4,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -18,8 +19,37 @@ import (
 	"boardgame/kittens/web"
 )
 
+// partyKeyHeader is how a browser proves it has been let in to the preview
+// games. A header rather than a cookie because nothing else here keeps session
+// state, and the client is already sending its own fetches.
+const partyKeyHeader = "X-Party-Key"
+
 // New returns the complete handler for the game server.
-func New(mgr *room.Manager) http.Handler {
+//
+// partyKey unlocks the catalogue's preview games — games that work but are not
+// ready to be put in front of everybody who visits. An empty key locks them for
+// everyone, which is the safe way round: a gate that opens when it is
+// misconfigured is not a gate.
+//
+// Worth being plain about what this is. It keeps an unfinished game off the
+// front page and stops a stray link opening one; it is a velvet rope, not
+// authentication. The key is a shared secret typed into a browser and sent on
+// every request, there are no accounts behind it, and anybody who has it can
+// pass it on. For "don't show the half-built game to the whole party" that is
+// the right size of mechanism. Do not grow anything that needs real access
+// control out of it.
+func New(mgr *room.Manager, partyKey string) http.Handler {
+	// Constant-time compare, which costs nothing here and keeps the habit: a
+	// naive == on a secret is the kind of thing that gets copied into somewhere
+	// it matters.
+	unlocked := func(r *http.Request) bool {
+		got := r.Header.Get(partyKeyHeader)
+		if partyKey == "" || got == "" {
+			return false
+		}
+		return subtle.ConstantTimeCompare([]byte(got), []byte(partyKey)) == 1
+	}
+
 	// Card faces are drawn per deal out of the scans that shipped in this binary,
 	// so the engine has to be told what is on offer before the first deck is
 	// built. Here rather than in main so that anything standing the stack up —
@@ -125,7 +155,32 @@ func New(mgr *room.Manager) http.Handler {
 	// The menu is built from this, so which games exist is written down once, in
 	// the catalogue, rather than again in JavaScript.
 	mux.HandleFunc("GET /api/games", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string][]games.Info{"games": games.All()})
+		writeJSON(w, http.StatusOK, map[string][]games.Info{
+			"games": games.Visible(unlocked(r)),
+		})
+	})
+
+	// The velvet rope. Answers yes or no to a password and nothing else — the
+	// client keeps the key and sends it on the two requests that care, so there
+	// is no session to expire and nothing to clean up.
+	mux.HandleFunc("POST /api/unlock", func(w http.ResponseWriter, r *http.Request) {
+		body := struct {
+			Key string `json:"key"`
+		}{}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+
+		ok := partyKey != "" && body.Key != "" &&
+			subtle.ConstantTimeCompare([]byte(body.Key), []byte(partyKey)) == 1
+		if !ok {
+			// Deliberately vague, and deliberately not logged with the attempt in
+			// it: the one thing a wrong guess must not do is tell you how close
+			// you were.
+			writeJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "that isn't the password",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +204,16 @@ func New(mgr *room.Manager) http.Handler {
 		if !games.Playable(slug) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "that game is not playable on this server yet",
+			})
+			return
+		}
+		// A preview game needs the key here too, not only on the menu. Hiding the
+		// tile without this would leave the game one hand-written POST — or one
+		// shared invite link to a room somebody already made — away from anybody
+		// at all, which is not hidden in any sense worth having.
+		if games.Preview(slug) && !unlocked(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "that game is not open on this server yet",
 			})
 			return
 		}
