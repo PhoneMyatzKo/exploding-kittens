@@ -4,7 +4,8 @@ A self-hosted web version of Exploding Kittens (Original Edition) for 2–5 peop
 One person runs the server, everybody else joins from their own phone or laptop
 with a four-letter room code.
 
-Written in Go with no database and no frontend build step. The whole thing —
+Written in Go with no frontend build step, and no database needed to play
+(an optional Postgres only stores the [play report](#play-report)). The whole thing —
 rules, rooms, and browser client — compiles into a single executable.
 
 ## Quick start
@@ -464,11 +465,75 @@ fails if any card ID reaches a player who shouldn't see it.
 The rules in `internal/games/kittens/game` know nothing about JSON, sockets or players'
 connections, which is why the interesting bugs are catchable with `go test`.
 
+## Play report
+
+Optionally, the server records which game each room plays, how many players
+join it, and which country they connect from, and serves that as JSON for the
+Odoo module. Games themselves never touch the database; if Postgres is missing
+or down, the tables play as normal and only the report is off.
+
+```sh
+DATABASE_URL='postgres://user:pass@localhost:5432/board-game-room' \
+GEOIP_DB=./dbip-country-lite.mmdb \
+REPORT_TOKEN='long-random-secret' \
+go run ./cmd/server
+```
+
+- `DATABASE_URL` — tables `rooms`, `room_players` and `game_suggestions` are
+  created on start.
+- `GEOIP_DB` — a [DB-IP Country Lite](https://db-ip.com/db/download/ip-to-country-lite)
+  or MaxMind GeoLite2-Country `.mmdb` file. Without it, countries show as
+  *Unknown*. Players on the same Wi-Fi show as *LAN*.
+- `REPORT_TOKEN` — without it the report refuses everyone.
+- `-trust-proxy` — read the player's address from `X-Forwarded-For`. Only when a
+  reverse proxy sits in front, or players can claim any country.
+
+```sh
+curl -H 'Authorization: Bearer long-random-secret' \
+  'http://localhost:8080/api/report?from=2026-10-01&to=2026-10-31&limit=200'
+```
+
+Dates are whole days in UTC, both inclusive; the default is the last 30 days.
+The answer has `totals`, `countries` (ISO `country_code`, players, rooms),
+`games` (rooms created, rooms played, players, average players per played room —
+most played first) and `rooms` (newest first, with their player count). Any
+request without the right token gets `403 {"error":"forbidden"}`.
+
+A player is counted once per room: reconnecting into a dealt game is not a new
+join, but leaving the lobby and coming back is, since the seat was given up.
+
+### Game suggestions
+
+The menu has a **Suggest a game** button. Players name a card game or family
+game, say how it is played, and optionally sign it. It is saved through
+`POST /api/suggestions` (anyone may post; five per address every ten minutes).
+Poker and other gambling games (blackjack, roulette, casino…) are refused with
+a `400`. Without `DATABASE_URL` the form answers `503`.
+
+### Odoo module
+
+`kittens_report` (Odoo 20, kept in the `odoo20_test` odev project) copies the
+data into Odoo every hour, with list, pivot and graph views and an
+Accept/Reject review for suggestions. It reads two token-protected endpoints
+that page by id, because rows are never changed after they are written:
+
+```sh
+curl -H 'Authorization: Bearer long-random-secret' \
+  'http://localhost:8080/api/export?rooms_after=0&players_after=0&limit=500'
+curl -H 'Authorization: Bearer long-random-secret' \
+  'http://localhost:8080/api/suggestions?after=0&limit=500'
+```
+
+`/api/export` never sends a player whose room is not in the same page or an
+earlier one. In Odoo, set the server URL and token under
+*Settings → Board Games*; *Board Games → Configuration → Sync now* copies at once.
+
 ## Tests
 
 ```sh
 go test ./...            # everything
 go test -race ./...      # needs gcc on Windows
+ANALYTICS_TEST_DATABASE_URL=postgres://… go test ./internal/server  # report against real Postgres
 ```
 
 What they cover:

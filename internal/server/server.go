@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 
+	"boardgame/kittens/internal/analytics"
 	"boardgame/kittens/internal/games"
 	"boardgame/kittens/internal/games/kittens/game"
 	monopoly "boardgame/kittens/internal/games/monopoly/game"
@@ -24,7 +25,8 @@ import (
 // state, and the client is already sending its own fetches.
 const partyKeyHeader = "X-Party-Key"
 
-// New returns the complete handler for the game server.
+// New returns the complete handler for the game server. Pass Analytics{} to run
+// without recording or reports.
 //
 // partyKey unlocks the catalogue's preview games — games that work but are not
 // ready to be put in front of everybody who visits. An empty key locks them for
@@ -38,7 +40,7 @@ const partyKeyHeader = "X-Party-Key"
 // pass it on. For "don't show the half-built game to the whole party" that is
 // the right size of mechanism. Do not grow anything that needs real access
 // control out of it.
-func New(mgr *room.Manager, partyKey string) http.Handler {
+func New(mgr *room.Manager, an Analytics, partyKey string) http.Handler {
 	// Constant-time compare, which costs nothing here and keeps the habit: a
 	// naive == on a secret is the kind of thing that gets copied into somewhere
 	// it matters.
@@ -225,6 +227,7 @@ func New(mgr *room.Manager, partyKey string) http.Handler {
 			visibility = "public"
 		}
 		log.Printf("room %s created (%s, %s)", rm.Code, slug, visibility)
+		an.Recorder.RoomCreated(rm.Code, slug, public)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"code": rm.Code, "public": public, "game": slug,
 		})
@@ -247,7 +250,20 @@ func New(mgr *room.Manager, partyKey string) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]int{"rooms": mgr.Count()})
 	})
 
-	mux.Handle("GET /ws", ws.Handler(mgr))
+	// Admin-only: who plays which game, from which country, and how full the
+	// rooms get. Read by the Odoo module; anyone without the token gets 403.
+	mux.HandleFunc("GET /api/report", reportHandler(an))
+	// The raw rows behind the report, and the players' game ideas, for the
+	// Odoo module's hourly sync. Same token.
+	mux.HandleFunc("GET /api/export", exportHandler(an))
+	mux.HandleFunc("GET /api/suggestions", listSuggestionsHandler(an))
+
+	// Public: the "Suggest a game" form on the menu.
+	mux.HandleFunc("POST /api/suggestions", suggestHandler(an))
+
+	mux.Handle("GET /ws", ws.Handler(mgr, func(req *http.Request, rm *room.Room, playerID string) {
+		an.Recorder.PlayerJoined(rm.Code, playerID, analytics.ClientIP(req, an.TrustProxy))
+	}))
 	return mux
 }
 

@@ -165,7 +165,7 @@ func TestUnlockAnswersThePassword(t *testing.T) {
 // from everybody rather than reveal them to everybody.
 func TestAnEmptyKeyLocksThePreviewGamesForEveryone(t *testing.T) {
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, ""))
+	srv := httptest.NewServer(New(mgr, Analytics{}, ""))
 	t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 	hidden := previewSlug(t)
 

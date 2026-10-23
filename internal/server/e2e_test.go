@@ -133,7 +133,7 @@ const testPartyKey = "open-sesame"
 func newTestServer(t *testing.T) (string, *room.Manager) {
 	t.Helper()
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, testPartyKey))
+	srv := httptest.NewServer(New(mgr, Analytics{}, testPartyKey))
 	t.Cleanup(func() {
 		srv.Close()
 		mgr.Shutdown()

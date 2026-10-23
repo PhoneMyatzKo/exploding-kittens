@@ -21,6 +21,9 @@ type recorder struct {
 	states int
 	errs   []string
 	closed bool
+	// Chat arrives as its own message rather than inside the state, because it
+	// belongs to the room and not to any game — see chat.go.
+	chat []ChatLine
 }
 
 func (r *recorder) Send(b []byte) {
@@ -46,6 +49,18 @@ func (r *recorder) Send(b []byte) {
 		if json.Unmarshal(b, &e) == nil {
 			r.errs = append(r.errs, e.Message)
 		}
+	case "chat":
+		// Reset means the whole conversation, replacing what we hold; otherwise
+		// the lines are new. A real client does exactly this.
+		var c chatPayload
+		if json.Unmarshal(b, &c) != nil {
+			return
+		}
+		if c.Reset {
+			r.chat = append([]ChatLine(nil), c.Lines...)
+			return
+		}
+		r.chat = append(r.chat, c.Lines...)
 	}
 }
 
@@ -65,6 +80,21 @@ func (r *recorder) errors() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.errs...)
+}
+
+func (r *recorder) chatLines() []ChatLine {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ChatLine(nil), r.chat...)
+}
+
+// chatTexts is the conversation as a client would read it down the panel.
+func (r *recorder) chatTexts() []string {
+	out := []string{}
+	for _, l := range r.chatLines() {
+		out = append(out, l.Text)
+	}
+	return out
 }
 
 // await blocks until the recorder has received a state newer than `since`.
