@@ -46,7 +46,7 @@ func TestReportRefusesWithoutToken(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mgr := room.NewManager()
-			srv := httptest.NewServer(New(mgr, Analytics{Token: tc.serverToken}))
+			srv := httptest.NewServer(New(mgr, Analytics{Token: tc.serverToken}, testPartyKey))
 			t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 
 			resp, _ := getReport(t, srv.URL, tc.sent, "")
@@ -103,7 +103,7 @@ func TestReportCountsRoomsPlayersAndCountries(t *testing.T) {
 
 	const token = "test-token"
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Token: token}))
+	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Token: token}, testPartyKey))
 	t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 
 	code := createRoom(t, srv.URL)

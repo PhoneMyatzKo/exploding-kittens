@@ -67,7 +67,7 @@ func TestSuggestLimiter(t *testing.T) {
 
 func TestAdminEndpointsRefuseWithoutToken(t *testing.T) {
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, Analytics{Token: "s3cret"}))
+	srv := httptest.NewServer(New(mgr, Analytics{Token: "s3cret"}, testPartyKey))
 	t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 
 	for _, path := range []string{"/api/export", "/api/suggestions"} {
@@ -87,7 +87,7 @@ func TestSuggestionsAndExport(t *testing.T) {
 
 	const token = "test-token"
 	mgr := room.NewManager()
-	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Suggestions: store, Token: token}))
+	srv := httptest.NewServer(New(mgr, Analytics{Store: store, Recorder: rec, Suggestions: store, Token: token}, testPartyKey))
 	t.Cleanup(func() { srv.Close(); mgr.Shutdown() })
 
 	if got, body := postSuggestion(t, srv.URL, analytics.SuggestionInput{GameName: "Poker", Category: "card"}); got != http.StatusBadRequest {

@@ -33,7 +33,15 @@ func patchCatalogue(g game) error {
 	if err != nil {
 		return err
 	}
+	// The anchors below are written with LF, and the checkout here is CRLF — so
+	// every anchor missed and the tool refused to patch a file it was looking
+	// straight at. Normalised for the matching, and put back the way it was found
+	// so adding a game is not also a line-ending change to the whole file.
 	content := string(src)
+	crlf := strings.Contains(content, "\r\n")
+	if crlf {
+		content = strings.ReplaceAll(content, "\r\n", "\n")
+	}
 
 	constLine := fmt.Sprintf("UNO              = \"uno\"\n\t%s = %q\n)", g.ConstName, g.Slug)
 	if !strings.Contains(content, catalogueConstAnchor) {
@@ -53,13 +61,17 @@ func patchCatalogue(g game) error {
 	}
 	content = strings.Replace(content, catalogueEntryAnchor, entry, 1)
 
-	return writeFormatted(path, content)
+	return writeFormatted(path, content, crlf)
 }
 
-func writeFormatted(path, content string) error {
+func writeFormatted(path, content string, crlf bool) error {
 	out, err := format.Source([]byte(content))
 	if err != nil {
 		return fmt.Errorf("formatting patched file: %w", err)
+	}
+	// gofmt emits LF regardless of what went in.
+	if crlf {
+		out = []byte(strings.ReplaceAll(string(out), "\n", "\r\n"))
 	}
 	return os.WriteFile(path, out, 0o644)
 }

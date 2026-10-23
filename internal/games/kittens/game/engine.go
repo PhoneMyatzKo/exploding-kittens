@@ -330,7 +330,7 @@ func (s *State) resolvePending() []Event {
 		s.Altering = pend.ActorID
 
 	case PendShuffle:
-		shuffle(s.Draw, s.rng)
+		shuffle(s.Draw, s.RNG)
 		events = append(events, Event{Kind: EvShuffled, ActorID: pend.ActorID})
 
 	case PendFuture:
@@ -353,7 +353,7 @@ func (s *State) resolvePending() []Event {
 		if target == nil || !target.Alive || len(target.Hand) == 0 {
 			break
 		}
-		i := s.rng.Intn(len(target.Hand))
+		i := s.RNG.Intn(len(target.Hand))
 		stolen := target.Hand[i]
 		target.Hand = append(target.Hand[:i], target.Hand[i+1:]...)
 		actor.Hand = append(actor.Hand, stolen)

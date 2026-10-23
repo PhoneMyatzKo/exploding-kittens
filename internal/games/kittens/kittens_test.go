@@ -1,11 +1,11 @@
 package kittens
 
 import (
-	"math/rand"
 	"testing"
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/kittens/game"
+	"boardgame/kittens/internal/prng"
 )
 
 // These tests guard the seam, not the rules — the rules have their own suite in
@@ -117,7 +117,7 @@ func TestAutoMoveLeavesTheDeckAsItWas(t *testing.T) {
 // deal that happens to hand p1 one is a deal this test would have to fish for.
 func altering(t *testing.T) core.Game {
 	t.Helper()
-	g := New(rand.New(rand.NewSource(1)), game.Imploding)
+	g := New(prng.New(uint64(1)), game.Imploding)
 	if _, err := g.Deal([]core.Seat{{ID: "p1", Name: "Alex"}, {ID: "p2", Name: "Sam"}}); err != nil {
 		t.Fatalf("dealing: %v", err)
 	}

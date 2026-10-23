@@ -63,6 +63,8 @@ Screenshots land in `shots/` (gitignored).
 | `imploding.js` | The expansion: the tile seats six and a six-player table deals; the demand list follows the deck; the rules sheet appears only for it; a Feral Cat stacks with a cat it does not match; and the Imploding Kitten goes back face up for free, arms visibly for everyone, stays hidden while buried but shows its own animated card once it surfaces, and then takes somebody with a Defuse in hand |
 | `play.js` | A full three-player game to a winner by real clicks, asserting the invariants on every path and reporting which mechanics it hit |
 | `uno.js` | The other game, the same way: a hand plays out to a winner, a Draw Four gets challenged, and every client agrees who won |
+| `restart.js` | A game survives the server being killed and restarted: both players' browsers reconnect on their own, land back in their own seats holding the same cards, and can carry on playing. Owns its own server on its own port, because it has to stop and start it |
+| `monopoly.js` | The board, the layout at two widths, *and* the game. The board: forty squares each in their own grid cell, the four corners where a Monopoly board has them, nothing inside the ring, every square named and every colour band painted, corners wider than the edge squares, names at 11px or more in a stated window, tokens starting on GO and moving, a price and the whole rent ladder one tap away, and the whole thing reading in Burmese across a reload. The game: buying, rent, a drawn card with its emoji, flavour line and generated effect, both ways out of jail, and building — houses drawn inside their own square, and never a build button on a square the server would refuse. The layout: it opens in Burmese without recording that as a choice, a long log scrolls itself rather than the page, and on a phone the play-by-play fills the screen under the board instead of leaving a band of nothing |
 
 `play.js` is a fuzz test with a browser attached: the deal is random, so it
 prints the coverage it got (`nope`, `defuse`, `catTrio`, …). A run that never
@@ -82,6 +84,18 @@ skim past the skip line. Both are enforced by the engine and covered in
 
 ## Writing more
 
+**Ask which thing scrolls.** "The board fits on screen" and "the page is no
+taller than the window" are different questions, and the first passed for months
+while the second was false: a long log grew Monopoly's side column past
+`100dvh`, so the whole document scrolled and the board crept off the top.
+`pageOverflow()` asks both, and it refuses to run unless the log has actually
+overflowed its panel — otherwise "the page does not scroll" is true for the
+boring reason and proves nothing.
+
+**A layout bug usually has a second half at the other width.** The same missing
+CSS that grew the page on a desktop left 226px of dead space under the log on a
+phone, because there the board is limited by width and stops short of the bottom.
+`onAPhone()` exists for that half. Neither viewport would have found both.
 **A toggle clicked blind is a coin flip.** `chat.js` opens the panel to type in
 it, so a later check that clicked the launcher again *closed* the thing it was
 about to wait for — and the failure read as "the panel never opened". Anything
@@ -125,13 +139,56 @@ Three traps that have caught this harness before:
   runs.** These scripts execute top to bottom with their helpers underneath, so
   putting shared state next to the helper that uses it fails with "Cannot access
   X before initialization" — and only on the path that reads it, so it looks like
-  a logic bug. Declare shared state at the top of the file.
+  a logic bug. Declare shared state at the top of the file, and **write helpers as
+  `function` declarations rather than `const` arrows** — declarations hoist, so
+  they are immune. This has now caught four scripts.
+- **`seen.x = seen.x || await click(...)` short-circuits once it is true.** Written
+  that way in a play loop, the action stops being taken after it succeeds once —
+  so the table sits on an unanswered prompt for the rest of the run and the script
+  still passes, with thin coverage as the only clue. Do the action, then record it.
+- **A driver that clicks two things cannot answer a third.** `restart.js` played
+  its turns with `#deck` and `#pass-btn` only, so a draw that opened a defuse
+  placement left the table sitting on it — and since that is what got saved, the
+  *restored* game was stuck on it too and "the game can still be played" failed
+  for a reason that had nothing to do with restarting. It passed alone and failed
+  in the suite, which is what a stall of this shape looks like: intermittent, and
+  blaming the wrong feature. Any loop that drives real turns needs
+  `clearModals(players)` in it, which is what that helper is for.
 - **`offsetTop` is relative to the nearest positioned ancestor**, not to the
   scroll box an element sits in. Arithmetic on it to decide "can this be
   scrolled to" quietly measures nothing. Scroll to the element and ask the
   browser where it ended up instead.
 
+**Drive an affordance blind, and assert both directions.** Monopoly's build
+button is rendered from a list of squares the server sends. `tryToBuild` does
+not read that list: it opens the towns this player owns and presses whatever is
+there. That is what makes it able to catch a disagreement — a button the server
+would refuse, *and* a missing button on a square it would accept. Then
+`buildOfferedOnSomebodyElses` walks the other direction over squares that must
+never offer one, and reports how many it looked at so it cannot pass by having
+found none. Both were checked by mutation: forcing the client to always offer
+Build fails them with `an unowned square offered build-btn` and `6 of 6 of other
+people's towns offered a build button`.
+
+Building itself is *reported*, not required — completing a colour set needs the
+dice to put one player on both browns, which is likely over eighty turns but not
+certain. The rule from the top of this file applies: what is required is the part
+that fires every run.
+
 The client keeps its state in a module scope with nothing on `window`. That is
 correct, and the tests read the DOM instead. Resist the urge to export state for
 testing: an assertion against an internal variable can pass while the screen is
 broken, which is the entire failure mode these scripts exist to catch.
+
+**A signal you cannot send.** `restart.js` kills the server outright rather than
+asking it to stop, and that is not laziness: Node cannot send a real SIGINT on
+Windows — every signal maps to `TerminateProcess` — so the graceful path is not
+reachable from a test at all. It is also the more honest case, since a crash or a
+power cut looks the same. The server therefore checkpoints on a timer rather than
+only on the way out, which is what makes the test possible and the feature worth
+having.
+
+**Beware a check that reads leftover DOM.** The first version of `restart.js`
+waited for `#table` to be visible and passed instantly — the table stays on
+screen the whole time the socket is down. Waiting on `#conn-warning` being hidden
+is what actually proves the client is talking to a server again.

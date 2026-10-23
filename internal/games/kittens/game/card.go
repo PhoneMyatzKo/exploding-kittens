@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"fmt"
-	"math/rand"
 )
 
 // CardType enumerates every card this engine knows: the Exploding Kittens
@@ -241,7 +241,7 @@ func compositionFor(v Variant) []tally {
 // Copies of the same card get different faces wherever the art pool is deep
 // enough to give them one: eighteen Defuses are printed and six are dealt, so a
 // table sees six different ways of defusing rather than the same one six times.
-func fullDeck(v Variant, rng *rand.Rand) []Card {
+func fullDeck(v Variant, rng *prng.Source) []Card {
 	var out []Card
 	id := 0
 	for _, c := range compositionFor(v) {
@@ -265,7 +265,7 @@ func fullDeck(v Variant, rng *rand.Rand) []Card {
 // Returns nil, spending no randomness at all, when the kind has no art. That
 // matters: the rules tests seed the rng themselves, and their decks must not
 // shift underneath them because somebody added a scan.
-func pickFaces(slug string, n int, rng *rand.Rand) []string {
+func pickFaces(slug string, n int, rng *prng.Source) []string {
 	pool := artVariants[slug]
 	if len(pool) == 0 {
 		return nil
@@ -280,6 +280,6 @@ func pickFaces(slug string, n int, rng *rand.Rand) []string {
 	return out
 }
 
-func shuffleStrings(s []string, rng *rand.Rand) {
+func shuffleStrings(s []string, rng *prng.Source) {
 	rng.Shuffle(len(s), func(i, j int) { s[i], s[j] = s[j], s[i] })
 }

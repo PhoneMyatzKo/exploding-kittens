@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"fmt"
-	"math/rand"
 	"testing"
 )
 
@@ -14,8 +14,8 @@ import (
 // ------------------------------------------------------------------------ setup
 
 func TestExpansionDeckHasTwentyExtraCards(t *testing.T) {
-	base := len(fullDeck(Original, rand.New(rand.NewSource(1))))
-	with := len(fullDeck(Imploding, rand.New(rand.NewSource(1))))
+	base := len(fullDeck(Original, prng.New(uint64(1))))
+	with := len(fullDeck(Imploding, prng.New(uint64(1))))
 	if base != 56 {
 		t.Fatalf("original deck = %d cards, want 56", base)
 	}
@@ -25,7 +25,7 @@ func TestExpansionDeckHasTwentyExtraCards(t *testing.T) {
 }
 
 func TestOriginalDeckHasNoExpansionCards(t *testing.T) {
-	deck := fullDeck(Original, rand.New(rand.NewSource(2)))
+	deck := fullDeck(Original, prng.New(uint64(2)))
 	for _, ct := range []CardType{
 		ImplodingKitten, Reverse, DrawFromBottom, FeralCat, AlterTheFuture, TargetedAttack,
 	} {
@@ -45,7 +45,7 @@ func TestExpansionSeedsOneImplodingKittenAndTheRestExploding(t *testing.T) {
 			for i := 0; i < n; i++ {
 				seats = append(seats, Seat{ID: fmt.Sprintf("p%d", i), Name: "P"})
 			}
-			s, err := NewGame(seats, Imploding, rand.New(rand.NewSource(int64(n))))
+			s, err := NewGame(seats, Imploding, prng.New(uint64(n)))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -81,10 +81,10 @@ func TestSixPlayersNeedTheExpansion(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		seats = append(seats, Seat{ID: fmt.Sprintf("p%d", i), Name: "P"})
 	}
-	if _, err := NewGame(seats, Original, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
+	if _, err := NewGame(seats, Original, prng.New(uint64(1))); err != ErrPlayerCount {
 		t.Errorf("six players on the original deck: err = %v, want ErrPlayerCount", err)
 	}
-	if _, err := NewGame(seats, Imploding, rand.New(rand.NewSource(1))); err != nil {
+	if _, err := NewGame(seats, Imploding, prng.New(uint64(1))); err != nil {
 		t.Errorf("six players with the expansion: %v", err)
 	}
 }
@@ -94,7 +94,7 @@ func TestEverybodyStillGetsExactlyOneDefuse(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		seats = append(seats, Seat{ID: fmt.Sprintf("p%d", i), Name: "P"})
 	}
-	s, err := NewGame(seats, Imploding, rand.New(rand.NewSource(5)))
+	s, err := NewGame(seats, Imploding, prng.New(uint64(5)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +529,7 @@ func TestExplodingKittenStillDefusable(t *testing.T) {
 // game ends with exactly one survivor.
 func TestRandomExpansionGamesStayConsistent(t *testing.T) {
 	for seed := int64(0); seed < 40; seed++ {
-		rng := rand.New(rand.NewSource(seed))
+		rng := prng.New(uint64(seed))
 		n := MinPlayers + int(seed)%(MaxPlayersFor(Imploding)-MinPlayers+1)
 
 		var seats []Seat
@@ -588,7 +588,7 @@ func countCards(s *State) int {
 
 // expansionMove picks a legal move for whatever the state is waiting on, biased
 // towards actually playing the expansion's cards.
-func expansionMove(s *State, rng *rand.Rand) Action {
+func expansionMove(s *State, rng *prng.Source) Action {
 	switch s.Phase {
 	case PhaseDefuse:
 		return Action{Kind: ActPlaceKitten, PlayerID: s.CurrentID(), Index: rng.Intn(len(s.Draw) + 1)}
@@ -613,7 +613,7 @@ func expansionMove(s *State, rng *rand.Rand) Action {
 	return Action{Kind: ActDraw, PlayerID: p.ID}
 }
 
-func expansionPlay(s *State, p *Player, rng *rand.Rand) (Action, bool) {
+func expansionPlay(s *State, p *Player, rng *prng.Source) (Action, bool) {
 	var other string
 	for _, q := range s.Players {
 		if q.Alive && q.ID != p.ID {

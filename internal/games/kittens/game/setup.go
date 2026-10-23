@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"errors"
-	"math/rand"
 )
 
 // Variant selects which printed sets are shuffled together. The expansion is
@@ -54,13 +54,13 @@ var ErrPlayerCount = errors.New("that many players won't fit this game")
 // rest are Exploding Kittens. It goes in face down: the first player to draw it
 // puts it back face up, and whoever draws it after that is out with no Defuse to
 // save them.
-func NewGame(seats []Seat, v Variant, rng *rand.Rand) (*State, error) {
+func NewGame(seats []Seat, v Variant, rng *prng.Source) (*State, error) {
 	n := len(seats)
 	if n < MinPlayers || n > MaxPlayersFor(v) {
 		return nil, ErrPlayerCount
 	}
 	if rng == nil {
-		rng = rand.New(rand.NewSource(rand.Int63()))
+		rng = prng.NewSeeded()
 	}
 
 	deck := fullDeck(v, rng)
@@ -74,7 +74,7 @@ func NewGame(seats []Seat, v Variant, rng *rand.Rand) (*State, error) {
 		Phase:          PhaseTurn,
 		TurnsRemaining: 1,
 		Direction:      1,
-		rng:            rng,
+		RNG:            rng,
 	}
 
 	for _, seat := range seats {

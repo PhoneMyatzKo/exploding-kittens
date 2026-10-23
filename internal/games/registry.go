@@ -2,11 +2,12 @@ package games
 
 import (
 	"fmt"
-	"math/rand"
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/kittens"
+	"boardgame/kittens/internal/games/monopoly"
 	"boardgame/kittens/internal/games/uno"
+	"boardgame/kittens/internal/prng"
 )
 
 // New builds the rules for one table.
@@ -15,7 +16,7 @@ import (
 // games exist; this says what to do about it, and the two are checked against
 // each other by the tests so a game cannot be advertised as playable without
 // something here to deal it.
-func New(slug string, rng *rand.Rand) (core.Game, error) {
+func New(slug string, rng *prng.Source) (core.Game, error) {
 	switch slug {
 	case Kittens, KittensImploding:
 		// Both tiles are the same rules over a different deck, so the variant is
@@ -25,6 +26,8 @@ func New(slug string, rng *rand.Rand) (core.Game, error) {
 		return kittens.New(rng, v), nil
 	case UNO:
 		return uno.New(rng), nil
+	case Monopoly:
+		return monopoly.New(rng), nil
 	}
 	return nil, fmt.Errorf("no rules for game %q", slug)
 }

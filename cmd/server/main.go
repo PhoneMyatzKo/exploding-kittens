@@ -20,6 +20,23 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":8080", "address to listen on")
+	// Games in progress are written here on the way out and read back on the way
+	// in, so a restart does not end everybody's game. Set it to "" to turn that
+	// off. On by default because the games worth losing least — a Monopoly session
+	// runs for hours — are exactly the ones nobody would think to protect until
+	// after it happened.
+	statePath := flag.String("state", "boardgame-state.json",
+		`file to save games in progress to across a restart ("" to disable)`)
+	// How much a hard kill is allowed to cost, against how often the file is
+	// rewritten. Thirty seconds of a board game is a turn or two.
+	stateEvery := flag.Duration("state-every", 30*time.Second,
+		"how often to checkpoint games in progress")
+	// Unlocks the catalogue's preview games — the ones that work but are not
+	// ready to be shown to everybody who opens the page. Typed into the menu's
+	// hidden button; see internal/server.New for what it is and is not.
+	// Empty locks them for everyone, which is the right way for a gate to fail.
+	partyKey := flag.String("party-key", "partytest123",
+		`password that reveals preview games on the menu ("" to hide them from everyone)`)
 	trustProxy := flag.Bool("trust-proxy", false,
 		"take the player's address from X-Forwarded-For (only behind a reverse proxy)")
 	flag.Parse()
@@ -28,11 +45,22 @@ func main() {
 	defer an.close()
 
 	mgr := room.NewManager()
-	defer mgr.Shutdown()
+
+	if n, err := mgr.LoadFrom(*statePath); err != nil {
+		// Not fatal. A state file that cannot be read costs those games, and
+		// refusing to start costs everybody the server as well.
+		log.Printf("could not restore games from %s: %v", *statePath, err)
+	} else if n > 0 {
+		log.Printf("restored %d room(s) — everybody reconnects with the link they already have", n)
+	}
+	// Checkpointed as well as saved on the way out: a crash, a power cut, or on
+	// Windows anything other than Ctrl+C in this console, all skip the graceful
+	// path entirely. Thirty seconds is the most a hard kill can cost.
+	mgr.StartAutosave(*statePath, *stateEvery)
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           server.New(mgr, an.Analytics),
+		Handler:           server.New(mgr, an.Analytics, *partyKey),
 		ReadHeaderTimeout: 10 * time.Second,
 		// No WriteTimeout: it would guillotine long-lived WebSocket connections.
 	}
@@ -51,6 +79,16 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("listen: %v", err)
 	}
+
+	// Saved before Shutdown, because Shutdown closes every room and a closed room
+	// has nothing left to describe. This is the whole reason the shutdown path is
+	// ordered by hand rather than left to a defer.
+	if n, err := mgr.SaveTo(*statePath); err != nil {
+		log.Printf("could not save games to %s: %v", *statePath, err)
+	} else if n > 0 {
+		log.Printf("saved %d room(s) to %s", n, *statePath)
+	}
+	mgr.Shutdown()
 	log.Println("bye")
 }
 

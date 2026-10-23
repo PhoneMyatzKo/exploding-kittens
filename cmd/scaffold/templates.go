@@ -62,7 +62,6 @@ func engineGoTmpl(g game) string {
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 )
 
 // ActionKind names one legal move. TODO: replace with %s's real moves.
@@ -89,7 +88,7 @@ type Event struct {
 
 // NewGame deals a fresh round. TODO: shuffle a deck, deal hands, decide who
 // goes first — whatever %s's setup actually is.
-func NewGame(seats []Seat, rng *rand.Rand) (*State, error) {
+func NewGame(seats []Seat, rng *prng.Source) (*State, error) {
 	if len(seats) < MinPlayers || len(seats) > MaxPlayers {
 		return nil, fmt.Errorf("%s takes %%d-%%d players, got %%d", MinPlayers, MaxPlayers, len(seats))
 	}
@@ -112,9 +111,9 @@ func adapterGoTmpl(g game) string {
 package %s
 
 import (
-	"math/rand"
 	"time"
 
+	"boardgame/kittens/internal/prng"
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/%s/game"
 )
@@ -122,13 +121,13 @@ import (
 // Game is one %s table.
 type Game struct {
 	state *game.State
-	rng   *rand.Rand
+	rng   *prng.Source
 }
 
 // New returns a table with nothing dealt yet.
-func New(rng *rand.Rand) core.Game {
+func New(rng *prng.Source) core.Game {
 	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		rng = prng.NewSeeded()
 	}
 	return &Game{rng: rng}
 }

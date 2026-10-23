@@ -1,23 +1,26 @@
 package uno
 
 import (
-	"math/rand"
+	"bytes"
+	"encoding/gob"
+	"errors"
 	"time"
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games/uno/game"
+	"boardgame/kittens/internal/prng"
 )
 
 // Game is one UNO table.
 type Game struct {
 	state *game.State
-	rng   *rand.Rand
+	rng   *prng.Source
 }
 
 // New returns a table with nothing dealt yet.
-func New(rng *rand.Rand) core.Game {
+func New(rng *prng.Source) core.Game {
 	if rng == nil {
-		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+		rng = prng.NewSeeded()
 	}
 	return &Game{rng: rng}
 }
@@ -204,4 +207,33 @@ func (g *Game) View(sh core.Shell) any {
 	v.Public = sh.Public
 	v.Game = sh.Game
 	return v
+}
+
+// ─────────────────────────────────────────────────────── saving and resuming
+
+func (g *Game) Snapshot() ([]byte, error) {
+	if g.state == nil {
+		return nil, nil // nothing dealt: the room's own lobby is the whole state
+	}
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(g.state); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (g *Game) Restore(data []byte) error {
+	if len(data) == 0 {
+		g.state = nil
+		return nil
+	}
+	var st game.State
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&st); err != nil {
+		return err
+	}
+	if st.RNG == nil {
+		return errors.New("uno: snapshot has no dice")
+	}
+	g.state, g.rng = &st, st.RNG
+	return nil
 }

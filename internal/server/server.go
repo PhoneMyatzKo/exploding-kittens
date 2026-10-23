@@ -4,6 +4,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -12,15 +13,45 @@ import (
 	"boardgame/kittens/internal/analytics"
 	"boardgame/kittens/internal/games"
 	"boardgame/kittens/internal/games/kittens/game"
+	monopoly "boardgame/kittens/internal/games/monopoly/game"
 	"boardgame/kittens/internal/room"
 	"boardgame/kittens/internal/ws"
 	"boardgame/kittens/static"
 	"boardgame/kittens/web"
 )
 
+// partyKeyHeader is how a browser proves it has been let in to the preview
+// games. A header rather than a cookie because nothing else here keeps session
+// state, and the client is already sending its own fetches.
+const partyKeyHeader = "X-Party-Key"
+
 // New returns the complete handler for the game server. Pass Analytics{} to run
 // without recording or reports.
-func New(mgr *room.Manager, an Analytics) http.Handler {
+//
+// partyKey unlocks the catalogue's preview games — games that work but are not
+// ready to be put in front of everybody who visits. An empty key locks them for
+// everyone, which is the safe way round: a gate that opens when it is
+// misconfigured is not a gate.
+//
+// Worth being plain about what this is. It keeps an unfinished game off the
+// front page and stops a stray link opening one; it is a velvet rope, not
+// authentication. The key is a shared secret typed into a browser and sent on
+// every request, there are no accounts behind it, and anybody who has it can
+// pass it on. For "don't show the half-built game to the whole party" that is
+// the right size of mechanism. Do not grow anything that needs real access
+// control out of it.
+func New(mgr *room.Manager, an Analytics, partyKey string) http.Handler {
+	// Constant-time compare, which costs nothing here and keeps the habit: a
+	// naive == on a secret is the kind of thing that gets copied into somewhere
+	// it matters.
+	unlocked := func(r *http.Request) bool {
+		got := r.Header.Get(partyKeyHeader)
+		if partyKey == "" || got == "" {
+			return false
+		}
+		return subtle.ConstantTimeCompare([]byte(got), []byte(partyKey)) == 1
+	}
+
 	// Card faces are drawn per deal out of the scans that shipped in this binary,
 	// so the engine has to be told what is on offer before the first deck is
 	// built. Here rather than in main so that anything standing the stack up —
@@ -96,10 +127,62 @@ func New(mgr *room.Manager, an Analytics) http.Handler {
 		})
 	})
 
+	// Monopoly's board. Served once at mount rather than sent with every state:
+	// forty squares of names and prices never change during a game, and repeating
+	// them on each roll would be most of the payload. Both languages go out
+	// together so switching between them costs no round trip.
+	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
+		if slug := r.URL.Query().Get("game"); slug != games.Monopoly && slug != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "that game has no board"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"tiles":        monopoly.Board(),
+			"startingCash": monopoly.StartingCash,
+			"passGo":       monopoly.PassGo,
+			"jailFine":     monopoly.JailFine,
+			// What the box holds. The remaining stock is in every state payload;
+			// these two are the constants it is a remainder of, so the client can
+			// say "9 of 32 left" rather than only "9".
+			"houseSupply": monopoly.HouseSupply,
+			"hotelSupply": monopoly.HotelSupply,
+			// The two decks travel with the board for the same reason: fifty cards
+			// in two languages never change during a game, and a state that
+			// carried the text of whichever card was face up would be sending the
+			// same paragraph on every roll. The state sends an index into this.
+			"cards": monopoly.Cards(),
+		})
+	})
+
 	// The menu is built from this, so which games exist is written down once, in
 	// the catalogue, rather than again in JavaScript.
 	mux.HandleFunc("GET /api/games", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string][]games.Info{"games": games.All()})
+		writeJSON(w, http.StatusOK, map[string][]games.Info{
+			"games": games.Visible(unlocked(r)),
+		})
+	})
+
+	// The velvet rope. Answers yes or no to a password and nothing else — the
+	// client keeps the key and sends it on the two requests that care, so there
+	// is no session to expire and nothing to clean up.
+	mux.HandleFunc("POST /api/unlock", func(w http.ResponseWriter, r *http.Request) {
+		body := struct {
+			Key string `json:"key"`
+		}{}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+
+		ok := partyKey != "" && body.Key != "" &&
+			subtle.ConstantTimeCompare([]byte(body.Key), []byte(partyKey)) == 1
+		if !ok {
+			// Deliberately vague, and deliberately not logged with the attempt in
+			// it: the one thing a wrong guess must not do is tell you how close
+			// you were.
+			writeJSON(w, http.StatusUnauthorized, map[string]string{
+				"error": "that isn't the password",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +206,16 @@ func New(mgr *room.Manager, an Analytics) http.Handler {
 		if !games.Playable(slug) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "that game is not playable on this server yet",
+			})
+			return
+		}
+		// A preview game needs the key here too, not only on the menu. Hiding the
+		// tile without this would leave the game one hand-written POST — or one
+		// shared invite link to a room somebody already made — away from anybody
+		// at all, which is not hidden in any sense worth having.
+		if games.Preview(slug) && !unlocked(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": "that game is not open on this server yet",
 			})
 			return
 		}

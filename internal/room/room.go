@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +22,7 @@ import (
 
 	"boardgame/kittens/internal/core"
 	"boardgame/kittens/internal/games"
+	"boardgame/kittens/internal/prng"
 	"boardgame/kittens/static"
 )
 
@@ -108,7 +108,10 @@ type Room struct {
 	// because logbuf is emptied on every deal — see chat.go.
 	chatbuf []ChatLine
 	chatSeq int
-	rng     *rand.Rand
+	// A counter-based generator rather than math/rand, because it is state: a
+	// game that cannot write its randomness down cannot be saved and resumed.
+	// See internal/prng.
+	rng *prng.Source
 
 	// Action-window bookkeeping. Some games let the rest of the table interrupt a
 	// play for a few seconds (Exploding Kittens' Nope); the room runs the clock
@@ -175,7 +178,7 @@ type joinResult struct {
 }
 
 func newRoom(code string, opts Options) *Room {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng := prng.NewSeeded()
 	slug := opts.Game
 	if slug == "" {
 		slug = games.Kittens
@@ -257,6 +260,8 @@ func (r *Room) run() {
 				c.reply <- r.isReapable()
 			case cmdSummary:
 				c.reply <- r.summary()
+			case cmdSave:
+				r.handleSave(c)
 			}
 		case <-r.windowTimer.C:
 			r.inWindow = false

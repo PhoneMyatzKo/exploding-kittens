@@ -2,6 +2,361 @@
 
 ## Done
 
+- ~~Dice that tumble and tokens that walk~~ — the first slice of animation, and
+  the one that fires on every single turn.
+
+  **The blocker was never the animation, it was the render.** `renderBoard()`
+  emptied `.tile-tokens` and built a fresh `<i>` on whichever square each player
+  stood on, every state — so there was never a node alive long enough to animate.
+  Tokens now live in one absolutely-positioned `.token-layer` spanning the grid,
+  one element per player created once and kept, moved with `transform` (never
+  `left`/`top`: a 40-cell grid is an expensive thing to re-lay-out mid-animation).
+  `web/games/monopoly/tokens.js`.
+
+  **Two positions, kept apart.** `target` is where the server says a player is;
+  `shown` is where their token is drawn. They are equal at rest, and a walk is
+  the gap being closed one square at a time. When the queue empties, `shown`
+  snaps to `target` — so a client can never drift further behind the longer the
+  game runs.
+
+  **The walk goes the long way round**, square by square, because the short way
+  is a diagonal across the middle of the board that says nothing. Watching the
+  corner go by is what makes passing GO legible. Driven by
+  `element.animate()` with one keyframe per square — the Web Animations API
+  because it returns a promise, so a queue of beats reads as the sequence it is
+  rather than as `setTimeout` arithmetic.
+
+  **Where a token came from is derived, not sent.** `EvMoved` carries the
+  destination and the step count, so `from = ((tile - count) % 40 + 40) % 40`.
+  No new server field. Going to jail is a `jump` rather than a walk — the board
+  picked you up, there was no journey.
+
+  **Reduced motion and the test switch are the same mechanism.** Everything
+  collapses to an instant change under `prefers-reduced-motion`, and `seat()` in
+  `lib.js` now sets `reducedMotion: "reduce"` by default — which is what keeps
+  every existing check that reads a token position from racing a walk that is
+  still half way round the board. One new function, `theTokenWalks()`, is the
+  only place motion is switched on, and it is the only thing that can tell "it
+  moves" from "it teleports": it samples the computed transform during a roll
+  and asserts more than two distinct values.
+
+  **Position moved out of the DOM tree and into an attribute.** With tokens in a
+  layer, "whose piece is on Bagan" stopped being answerable from the outside, so
+  each token carries `data-square`. That is rendered state rather than an
+  exported internal — it is what the token is showing — and `positions()` and
+  `measureBoard()` read it.
+
+- ~~The log grew the page, the phone had dead space, and Monopoly opened in
+  English~~ — three things reported from a real session with screenshots, and the
+  first two turned out to be one line of CSS each on the same rule.
+
+  **The log was growing the page.** `.side-panel .log-panel` had `flex: 1` but no
+  `min-height: 0`. A flex item's automatic minimum height is its *content's*
+  height, and that content is every line ever written — so `flex: 1` could not
+  shrink it, the column grew past the table's `100dvh`, and a long game scrolled
+  the whole document instead of the log. `.log` itself was never at fault:
+  `overflow-y: auto` already forces its own automatic minimum to zero, which is
+  why the identical markup behaves in the games that lay the log out in a row.
+  This is the third time a missing `min-height: 0` has produced a symptom that
+  looked like something else entirely.
+
+  **The phone had a band of nothing under the log**, and it is the same rule: the
+  log was a fixed 104px, while on a phone the board is limited by *width* and
+  stops well short of the bottom of the screen. `flex: 1 1 104px` makes 104px the
+  basis rather than the height — what it settles at when there is nothing spare,
+  rather than a cap on what it can use. Measured on the reporter's handset size:
+  226px of an 891px screen was empty.
+
+  **Monopoly Myanmar now opens in Burmese**, and the interesting part is *how*.
+  One key and a per-game *fallback*, not a key per game: "what has this person
+  chosen" is shared, and "what should they see if they have chosen nothing" is the
+  game's. Which needed two supporting changes — an unrecognised stored value has
+  to read as *unset* rather than as English, or there is nothing for a game to
+  have an opinion about; and neither game may write the language back on mount,
+  because that turns "I have not chosen" into "I chose English" the first time
+  anybody opens a table and would have silently defeated the new default for
+  everybody who had opened Exploding Kittens first. That second one is asserted
+  directly: the browser check reads `localStorage` and fails if mounting recorded
+  a choice.
+
+  All three checks were mutation-tested — restoring each bug fails exactly one
+  check and nothing else, with the reported symptom in the message.
+
+- ~~Houses and hotels~~ — step 4, and the one that makes the game reliably
+  finishable. `internal/games/monopoly/game/build.go`.
+
+  **The measurement is the point.** `TestGamesReachAWinner` reports the rate over
+  forty seeds. With the fuzz driver's build branch present but never taken, 7 of
+  40 finish; with it taken, **23 of 40**, averaging 305 moves. Step 3 measured 6
+  of 40 on a driver without the branch at all — the 7 is the honest comparison,
+  since merely having the branch consumes a different amount of randomness. Three
+  houses on Kalaw takes its rent from K28,000 to K550,000, against a lap that pays
+  K200,000; that is the whole mechanism.
+
+  **Two rules do all the work**, and both are the original's. You may only build
+  on a colour set you hold *complete* — which is why anybody trades, and why a set
+  nobody can finish is a set nobody improves. And you must build **evenly**: no
+  second house anywhere in a set until every square in it has one, and the same in
+  reverse when selling. Without the second rule the strategy collapses into
+  stacking a hotel on whichever square people land on most.
+
+  **The bank's stock is finite and that is a rule**, not an implementation detail:
+  32 houses and 12 hotels, so buying up the cheap sets to starve everybody else of
+  building material is a real move. It is *counted* from `State.Houses` rather
+  than stored beside it — a second copy of a derivable number is a second copy to
+  get wrong, and this one would go wrong silently as a table that slowly grows
+  more houses than the box holds. A hotel is a fifth level rather than a flag,
+  because `Rent[5]` is where its figure already lived; building one puts its four
+  houses back on the shelf, and selling one takes four off, which the bank has to
+  be able to supply.
+
+  **Selling is in.** Half price, evenly in reverse, which gives somebody who has
+  over-built a way to raise cash instead of going out. Mortgaging a bare deed is
+  still not.
+
+  **The client renders the server's answer, never its own.** The view sends
+  `me.canBuild` and `me.canSell` as lists of squares and the client renders
+  exactly them, because the even-build rule and the bank's stock are the server's
+  to work out and a client that decided for itself would be a second copy of the
+  rule that could disagree. What the client *does* work out is the *reason* a
+  square has no button ("you need the whole colour set", "build evenly", "the bank
+  has none left") — a reason is presentation; the refusal already happened by the
+  square being left out of the list.
+
+  The controls live on the square's detail card rather than in the board's middle:
+  you build on a square, so they belong on that square's card, and they cost no
+  room at all until somebody taps a deed. The card now shows the full rent ladder
+  with the level in force bracketed, because "what is this worth if I finish the
+  set" is the question building exists to answer.
+
+  **Two browser checks, and both were mutation-tested.** `tryToBuild` drives
+  building blind — it opens the towns a player owns and presses whatever is there,
+  so it catches a button the server would refuse *and* a missing one on a square
+  it would accept. `buildOfferedOnSomebodyElses` walks the other direction and
+  reports how many squares it looked at, so it cannot pass by having found none.
+  Forcing the client to always offer Build fails both. Building itself is
+  *reported* rather than required: completing a set needs the dice to put one
+  player on both browns, likely over eighty turns but not certain.
+
+  One thing deliberately not the original's: **you may only build before you roll,
+  or while being held in jail**. The original lets you build at any moment,
+  including during somebody else's turn, which needs a rule for who gets the last
+  house when two people want it at once. Noted in the gap list at the foot of
+  `engine.go`.
+
+  The Burmese for the new rules sheet section and the five new UI strings
+  (အိမ်တန်ဖိုး, အဆောက်အအုံ, ဟိုတယ်, အညီအမျှ ဆောက်ပါ, ဘဏ်တွင် မကျန်တော့ပါ) was
+  written without a native reader, like the rest of it. Still wants a pass.
+
+- ~~ကံစမ်း and ရပ်ရွာရန်ပုံငွေ, and a jail that holds you~~ — step 3. The fifty
+  cards came as an idea list, written in Burmese, and the humour is the whole
+  point of them: the power coming back, the bus being full, a checkpoint wanting
+  a document you left at home, an aunt insisting you take her money. That is what
+  a localised edition is *for*, and the pack is written down verbatim in
+  `cards.go` with an English translation beside each one rather than a second
+  joke.
+
+  **Split by character**, the way the original splits its decks: Chance is luck
+  and movement, Community Chest is money and social life. Twenty-five each.
+
+  **The amounts were scaled ×10.** The ideas came at 1,000–20,000 kyat, which
+  reads right but is the wrong scale here: a property is K60,000–400,000 and a lap
+  pays K200,000, so a K5,000 card is three tenths of one per cent of your money.
+  At ×10 they sit between 0.7% and 13% of starting cash, which is the proportion
+  the original's $50–$200 cards have. The relative ordering of the ideas is
+  untouched.
+
+  **The cards needed jail to be real**, so that came with them. Being sent there
+  now *holds* you: on your turn you throw for a double, pay the K50,000 fine, or
+  spend a held get-out-of-jail card, and three failed throws take the fine and let
+  you out anyway. Landing on the corner the ordinary way is still just visiting.
+  Missed turns and backwards movement were also new.
+
+  **The best outcome was accidental.** `TestTheSliceHasNoBankruptcyPressure`
+  existed as a canary saying the board could not be won and would fail "the day
+  building lands". It fired the moment the cards went in: fines, card payments and
+  turns missed while the board keeps charging turned out to be enough pressure on
+  their own. It is replaced by `TestGamesReachAWinner`, which reports the rate —
+  6 of 40 seeds finish, averaging 226 moves. Houses will still help, but the game
+  is no longer unwinnable.
+
+  Two real bugs found on the way, both from one cause: `pay()` moved money *and*
+  ended the turn. Split into `transfer()` and an explicit `endTurn()` because of
+  it —
+
+  - the flat-tyre card ("pay K30,000 and go back one square") never went back,
+    since paying had already passed play on;
+  - paying your way out of jail ended the turn you had just bought.
+
+  And one of my own: `advance()` walked with `s.Current + step` while also
+  assigning to `s.Current`, so the base and the offset moved together and it
+  stepped over twice as many seats as it should.
+
+  The card is shown to the **whole table**, not only to whoever drew it — at a
+  table the card is read out, and watching somebody else's luck is half the point
+  of the deck. Only the drawer gets the button. The effect line under the flavour
+  is generated from the effects rather than typed into the pack, so a card cannot
+  say one thing and do another, and it writes its numbers in Burmese numerals
+  (ကျပ် ၇၀,၀၀၀) to match the way the pack was written.
+
+  One limitation worth knowing: the language toggle is in the topbar, behind the
+  card's scrim, so it cannot be reached while a card is on screen. The card
+  rebuilds itself if the language does change, but in practice you switch between
+  cards.
+
+- ~~The Monopoly board was too small to read~~ — reported with a richup.io
+  screenshot to copy the layout from. The first board was eleven equal cells,
+  which is the wrong shape: a real board's corners are wider than its edge
+  squares, and that difference is exactly the room a name, a price and a colour
+  band need to all be legible at once. Now `1.55fr repeat(9, 1fr) 1.55fr` on both
+  axes, and every size inside a square is a share of one square (`--sq`) so the
+  whole thing scales as one piece.
+
+  What else changed, all of it following the reference:
+
+  - **The colour band moved to the outer edge**, where it is printed, which means
+    four rules keyed off `data-side` rather than one.
+  - **Side columns run their text along the long axis.** `writing-mode`, not a
+    transform: a rotated box keeps the width it was given and wraps in the wrong
+    direction, while vertical writing mode sizes itself and lets a name use the
+    whole square.
+  - **The players moved into a column beside the board.** The board is square, so
+    its size is decided by the shorter axis — a full-width seat strip above it was
+    spending 130px of height on a row that had width going spare. The board went
+    from 630px to 715px on the same window.
+  - **Real dice**, drawn as pips on a three-by-three grid. The ⚀-⚅ characters
+    come out at wildly different weights across platforms and are illegible small.
+  - **Ownership tints the whole square** in the owner's colour with a solid edge
+    on the inner side. "Who owns this" has to be answerable from across a table,
+    and a thin bar along one edge was not.
+  - Specials carry an icon (chest, plane, question mark); stations and utilities
+    get a band of their own, because they are bought and charge rent rather than
+    being scenery.
+
+  Four CSS traps, each of which looked like something else:
+
+  - `--sq` was declared on `.board`, but the dice live in `.board-centre`, which
+    is its **sibling** — so the variable was out of scope and every die rendered
+    at zero size. It lives on the wrapper now.
+  - The left column's body is turned through 180°, so the padding leaving room for
+    its band landed on the opposite side. "Mawlamyine" came out as "awlamyin".
+  - `.tile.corner` came *before* the per-side padding rules at equal specificity,
+    so the bottom corners kept the band's padding and clipped their own label.
+  - `container-type: size` makes an element's size independent of its contents, so
+    `flex: none` on the phone collapsed the whole board to nothing. It needs an
+    explicit size — square, because the board is.
+
+  `monopoly.js` is 17 checks now, including the ones this was for: a corner is
+  wider than an edge square, names render at 11px or more in a stated window, no
+  name is clipped to nothing, and the side columns really do set their text
+  sideways. Verified by mutation — putting the grid back to equal cells fails it
+  with "a corner is 70px against an edge square's 70px".
+
+- ~~Serializable state, and games that survive a restart~~ — step 2 of the
+  Monopoly plan, and the one that decided whether any of it was worth shipping: a
+  two-hour session on a server where a deploy ends every game is a game people
+  abandon.
+
+  **The randomness layer first.** `internal/prng` replaces `math/rand`
+  everywhere a game deals from. Counter-based, so the whole state is a seed and a
+  count: it marshals, and a bug report is two numbers rather than an opaque blob.
+  Deliberately *not* `math/rand/v2`'s PCG, which also marshals but only as a
+  sixteen-byte blob — that gives up the reproduce-from-a-report half for nothing.
+  Room codes and seat tokens stay on `crypto/rand`; they are credentials, not
+  dice.
+
+  **Snapshots are gob, not JSON**, and that turned out to be load-bearing rather
+  than a preference. A game's json tags describe the *client* payload: Exploding
+  Kittens hides a card's `Type` from the wire, so a JSON snapshot restores a deck
+  of typeless cards and the engine deals them happily — wrong cards several turns
+  later, with nothing to point at. Each engine's `State` now carries its
+  `*prng.Source` as an exported field tagged `json:"-"`: exported so gob saves it,
+  hidden so it never reaches a browser.
+
+  **Checkpoints, not a farewell note.** The first version saved only on a clean
+  shutdown, and the browser test could not make that fire at all — Node cannot
+  send a real SIGINT on Windows, every signal maps to `TerminateProcess`. Which
+  is the more important point: a crash and a power cut take no signal either. So
+  the state file is written every 30s (`-state`, `-state-every`) and a hard kill
+  costs at most that.
+
+  **Nothing new on the client.** Players come back through the token path that
+  already handles a phone going to sleep. One limitation worth knowing: private
+  log lines ("You drew Nope") were never in the shared log, so they do not
+  survive a reconnect — restart or not.
+
+  Two bugs found on the way, both by tests rather than by reading:
+
+  - Monopoly reported the rent or tax *owed* rather than what was actually paid,
+    so a player who could not cover it produced a log line claiming K200,000 left
+    somebody holding K43,000 — and broke any accounting done from the events,
+    which is how the conservation fuzz test caught it.
+  - `TestRandomGamesFinishAndConserveMoney` was vacuous: it demanded a winner and
+    logged "no winner in 4000 moves" for all forty seeds, so the money check under
+    it never ran once. The slice genuinely cannot be won — unimproved rents are
+    tiny against a K200,000 lap, so everybody gets richer — which is now its own
+    test, and a canary that fails the day building lands.
+
+- ~~Monopoly Myanmar, step 1: a playable slice~~ — roll, move, buy, pay rent,
+  taxes, bankruptcy, and a winner when one player is left. Scaffolded with
+  `cmd/scaffold` (which needed a fix first: its catalogue anchors were LF-only
+  and this checkout is CRLF, so it refused to patch a file it was looking
+  straight at — it would have failed for every future game here).
+
+  **The board is the original's shape with Myanmar on it.** Which square is a
+  property, where the corners and taxes fall, and what everything costs are the
+  original's, because those numbers are balanced and changing them changes the
+  game rather than the theme. The places are Myanmar's, ordered the way the
+  original orders its streets — Myeik and Dawei in the first corner, Bagan and
+  Shwedagon in the last — and prices are the printed dollars × 1,000, so the
+  cheapest square is K60,000 and everybody starts with K1,500,000. Every square
+  carries both names, from the server: what a square is called is game data, and
+  the whole table has to be looking at the same board.
+
+  **The board is drawn from arithmetic, not a table.** `gridPos(i)` puts square
+  *i* on an 11×11 grid; forty hand-written positions would be forty chances to be
+  wrong, and the mistake looks like a rendering fault. `web/testing/monopoly.js`
+  checks the geometry directly — forty distinct grid cells, nothing inside the
+  ring, and the four corners in the right ones.
+
+  **What is not in yet**, listed at the foot of `engine.go` and in the rules sheet
+  rather than left to be discovered: Chance and Community Chest do nothing, the
+  jail corner does not hold you, and there are no houses, auctions, mortgages or
+  trades. Auctions have a home waiting — `core.Game`'s `Window()` is already a
+  timed window any player can act into, which is what an auction is.
+
+  **The slice cannot be won, and that is the board rather than a bug.** Unimproved
+  rents are K2,000–K50,000 against K200,000 a lap, so everybody gets richer and
+  nobody breaks: 1,500 moves took a three-player table from K4.5m to K33.9m. The
+  first version of the fuzz test asserted a winner, logged "no winner" for all
+  forty seeds, and so never once ran the money-conservation check underneath it.
+  It now checks the invariants on every step and there is a second test that
+  states the no-bankruptcy finding outright — it will fail when building lands,
+  which is exactly when somebody should delete it.
+
+  Four defects found on the way, three of them pre-existing:
+
+  - **`--gold`, `--crimson` and `--paper` were undefined**, in eleven rules left
+    over from the token rename. An invalid `var()` computes as `unset`, so they
+    failed quietly: the selected language pill had no fill at all, and "Play now"
+    on the menu tiles had no background. Repointed at roles (`--accent`,
+    `--accent-ink`, `--ink`) rather than renamed blindly, per the warning in the
+    web-client section below.
+  - **Synthetic bold destroys Myanmar text.** No Myanmar font here ships a bold
+    face, so the browser fakes one by smearing each glyph sideways and a stack of
+    diacritics welds into a blot. The language pill and the board's corner squares
+    now drop to weight 500 in Burmese.
+  - **A `position: relative` sibling paints over a static one** whatever the
+    markup order, so the board swallowed every click meant for the Roll button
+    underneath it. The symptom was a button that was visible, enabled, and did
+    nothing.
+  - **The log kept the language it was written in.** It is built by appending only
+    what is new, so switching mid-game left a Burmese board over an English
+    play-by-play. `resetFeed()` before the re-render rebuilds it from the entries
+    the server still holds in full.
+
+  Next: persistence, before sessions get long enough to be worth losing.
+
 - ~~The hand covered the table, and the Nope window sat on the hand~~ — three
   layout changes, all reported from real play.
 
@@ -150,6 +505,160 @@
 - Spectators for eliminated players (right now you watch the table you're on).
 - Persistence, so a server restart doesn't wipe a game in progress. — see
   "Serializable state" below; the seed change is the part that unblocks this.
+
+## Direction: Monopoly — what is left, and in what order
+
+Written down because the ordering question came up directly: finish the rules
+first, or animate first? The answer is neither wholesale — it depends on which
+animation, and the split is the whole point of this section.
+
+### The order
+
+1. ~~**Movement animation**~~ — done; see the Done section at the top of this
+   file. The dice tumble and the token walk, first because they are small,
+   bounded, fire on every single turn, and are coupled to nothing that is left.
+2. **Auctions.** The cheapest real rule left — `core.Game.Window()` already
+   exists and nothing currently uses it — and it makes a declined square change
+   hands instead of sitting with the bank.
+3. **Chat** — see "Direction: chat in a room" below. Placed here, ahead of
+   trading, for one architectural reason: if trading ships first it will grow its
+   own message field for haggling, and then there are two chat systems. Chat is
+   the room's, not a game's.
+4. **Trading.** The biggest hole in the game now that houses are in, because
+   houses need a *complete* colour set and the dice hand you one only by luck:
+   `monopoly.js` says as much, and reports building rather than requiring it.
+   Trading is what turns building from a lottery into a plan. Also the most work
+   — it needs richer messages than `core.ClientMsg` carries, so it touches the
+   seam.
+5. **The rest of the animation pass** — cash ticking on a seat, a square
+   flashing as it is bought, card-flip choreography, and `cinema.js` flashes for
+   rent, jail and bankruptcy. Deliberately *after* the rules: these are driven by
+   money and prompt events, and auctions and trading both add new ones. Designing
+   the beats against an incomplete event vocabulary means designing them twice.
+6. **Refinements**, in descending order of how much anybody would notice:
+   bankruptcy paying the creditor rather than the bank; a forced sale when a rent
+   falls due (needs a phase — somebody has to be asked which buildings go);
+   mortgaging a bare deed; building during somebody else's turn.
+
+### The animation plan
+
+**Nothing needs installing.** No engine, no canvas, no library — CSS transforms
+plus the queue already in `web/core/cinema.js`. Ebitengine was considered and
+turned down: it would cost the Burmese text shaping the browser gives for free, a
+4–8MB WASM download for players joining on mobile data, and every one of the 161
+DOM assertions in `web/testing/`. It remains the right tool for a *different*
+product — an offline or single-player Monopoly with no server.
+
+Four things are already in place:
+
+- **The beat queue.** `cinema.js` solves the hard part: beats arrive in bursts
+  (roll → move → pass GO → rent → card, all in one state) and playing them on
+  top of each other reads as a rendering fault. It queues, plays one at a time,
+  and caps the backlog at three.
+- **The sequencing.** `freshEvents(v)` returns the new events in order and its
+  seq counters already handle reconnect, new round and missed-while-away.
+  Monopoly's `onState` calls it and throws the result away today.
+- **Where a token came from.** `EvMoved` carries the destination in `tile` and
+  the step count in `count`, so `from = ((tile - count) % 40 + 40) % 40`. That is
+  what lets a token walk square by square, which is what makes passing GO legible
+  instead of a diagonal slide across the board.
+- **The dice faces.** `v.dice` is both faces already and `dieEl()` draws real
+  pips. A roll is: random faces for ~600ms, then settle on the true ones.
+
+**The one blocker.** `renderBoard()` destroys and recreates every token on every
+state (`.tile-tokens` → `replaceChildren()`), and a transition needs the same DOM
+node to survive the update. So tokens move into one absolutely-positioned layer
+over the board, keyed by player id, driven by `transform: translate(...)` off the
+target square's rect. Animate `transform`, never `left`/`top` — it is
+GPU-composited and will not force layout on a 40-cell grid.
+
+**The design decision.** The board renders the authoritative position today.
+Animation means holding a second, *presented* position that lags the server's and
+catches up. When a new state lands mid-animation, snap to truth and drop the
+remaining beats: the alternative is a client that drifts further behind the
+longer the game runs. And **never gate input on animation** — the server is
+authoritative, and a Roll button that unlocks only when the token stops moving
+makes the game feel broken. Animate behind the interaction.
+
+Reach for `element.animate()` over CSS transitions: it returns a promise, so
+`await el.animate(...).finished` makes a beat queue read like the sequence it is,
+with no `setTimeout` arithmetic.
+
+**Testing, which is the part that gets forgotten.** Animation breaks every check
+that reads a position — `positions(host)`, "both players' tokens start on GO",
+and the build loop that taps squares. The fix is that `prefers-reduced-motion`
+and the test switch are the *same mechanism*: make every animation collapse to
+nothing under that preference, and set `page.emulateMedia({ reducedMotion:
+"reduce" })` in `lib.js`'s `seat()`. Accessibility and deterministic tests come
+out of one change, and it earns one new check — that a token *does* animate when
+motion is allowed.
+
+## Direction: chat in a room
+
+Wanted for every game, not just Monopoly — haggling over a trade, but also the
+ordinary business of a party game played across a network rather than a table.
+
+**Chat belongs to `internal/room`, not to `core.Game`.** This is the whole design
+and everything else follows from it. `handleMsg` already handles three of its own
+message types — `start`, `lobby` and `avatar` — before the game sees anything,
+and crucially *before* the `if !r.game.Started()` guard. Chat is the fourth, and
+lands in the same place. Which means it works in the lobby, during a game, after
+a game is over, and for a game nobody has written yet, for free. Routing it
+through `Game.Submit` instead would make all four games implement it identically
+and still leave the lobby silent.
+
+`ClientMsg.Avatar` is the precedent for the field, too, with its comment already
+saying "Shell-level, handled by the room itself."
+
+### What comes free
+
+- **Ordering.** The room is single-writer, so there is no race on message order
+  and no sequencing work to do.
+- **The wire shape.** `core.Entry` already carries `ActorID`, `Text`, `Seq` and
+  `OnlyFor`. A chat line is an Entry with `Kind: "chat"`. Room-authored entries
+  already exist — `{Kind: "joined", ActorID: m.ID}` — so this is not a new idea.
+- **Resync.** `feed.js` already appends only what is new, rebuilds on a detected
+  gap, and leaves a reader who has scrolled back where they were. Chat inherits
+  all of it by using the same seq mechanism.
+- **XSS, by construction.** Every line is written with `textContent`, never
+  `innerHTML`. Keep it that way and free text from strangers is inert.
+- **Burmese input.** A DOM `<input>` gets the platform's Myanmar keyboard and IME
+  for nothing. Another entry on the ledger against ever moving the client to a
+  canvas.
+
+### What must NOT be reused
+
+**Not the same buffer.** `r.logbuf = nil` on dealing and on returning to the
+lobby — so a conversation kept in the play-by-play would be wiped the moment a
+new hand is dealt. Chat needs its own ring buffer with its own cap, cleared only
+when the room is.
+
+**Not the same panel.** The play-by-play is a *record* people scroll back
+through; chat is conversation. Merged, a chatty table buries "Aung bought Bagan".
+Same plumbing, separate list. On desktop a second pane or a tab in
+`.side-panel`; on a phone a tabbed region — `Play by play | Chat` with an unread
+badge — because the space under the board was only just reclaimed and there is
+not room for two stacked panels.
+
+**Not the private path.** Chat must go in the *shared* buffer. Private entries
+are never replayed (documented at length in step 2), so private chat would
+vanish on any reconnect — a phone going to sleep would eat the conversation.
+
+### What will bite
+
+- **Rate limiting.** Without it one client floods the room goroutine. A per-
+  connection token bucket where the message is handled.
+- **A length cap**, server-side, and a cap on the ring buffer: rooms are
+  in-memory, so an unbounded chat log is a per-room leak.
+- **Moderation.** The public lobby means strangers can meet. v1 needs nothing
+  more than the caps above plus the existing mute, but it is worth knowing that
+  this is the first feature that lets one player type at another.
+- **Not a prerequisite for trading.** A trade must be structured state —
+  offer, counter, accept — or it ends in "I said I'd give you Bagan" with nothing
+  to enforce. Chat makes haggling *pleasant*; it must not become the mechanism.
+
+Deliberately not in v1: typing indicators, emoji reactions, per-player mute,
+history that outlives the room.
 
 ## Direction: multi-game core
 

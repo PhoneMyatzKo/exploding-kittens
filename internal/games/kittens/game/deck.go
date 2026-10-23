@@ -1,12 +1,12 @@
 package game
 
-import "math/rand"
+import "boardgame/kittens/internal/prng"
 
 // Throughout this package a []Card used as a draw pile is ordered top-first:
 // index 0 is the next card a player would draw.
 
 // shuffle randomises a pile in place.
-func shuffle(pile []Card, rng *rand.Rand) {
+func shuffle(pile []Card, rng *prng.Source) {
 	rng.Shuffle(len(pile), func(i, j int) {
 		pile[i], pile[j] = pile[j], pile[i]
 	})

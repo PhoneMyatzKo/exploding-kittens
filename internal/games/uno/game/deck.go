@@ -1,6 +1,6 @@
 package game
 
-import "math/rand"
+import "boardgame/kittens/internal/prng"
 
 // Throughout this package a []Card used as a draw pile is ordered top-first:
 // index 0 is the next card anyone would draw. The discard is the other way
@@ -8,7 +8,7 @@ import "math/rand"
 // are appended to.
 
 // shuffle randomises a pile in place.
-func shuffle(pile []Card, rng *rand.Rand) {
+func shuffle(pile []Card, rng *prng.Source) {
 	rng.Shuffle(len(pile), func(i, j int) { pile[i], pile[j] = pile[j], pile[i] })
 }
 
@@ -50,7 +50,7 @@ func (s *State) refill() bool {
 	top := s.Discard[len(s.Discard)-1]
 	recycled := make([]Card, len(s.Discard)-1)
 	copy(recycled, s.Discard[:len(s.Discard)-1])
-	shuffle(recycled, s.rng)
+	shuffle(recycled, s.RNG)
 	s.Draw = recycled
 	s.Discard = []Card{top}
 	return true

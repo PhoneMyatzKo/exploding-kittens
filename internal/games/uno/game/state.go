@@ -1,6 +1,6 @@
 package game
 
-import "math/rand"
+import "boardgame/kittens/internal/prng"
 
 // Phase drives what each client is allowed to do. Every transition is decided by
 // the engine; clients only render the affordances a phase implies.
@@ -114,11 +114,16 @@ type State struct {
 	RoundWinnerID string
 	WinnerID      string
 
-	// seats is kept so a second round can be dealt without the room having to
+	// Seats is kept so a second round can be dealt without the room having to
 	// remember who was playing. Seats do not change mid-game: somebody who
 	// disconnects is still holding a hand and still owes points.
-	seats []Seat
-	rng   *rand.Rand
+	//
+	// Seats and RNG are exported for one reason: they are state, and a game that
+	// cannot write them down cannot be saved and resumed. Both are kept off the
+	// wire with json:"-" — gob, which is what snapshots use, ignores the tag and
+	// saves them. Nothing outside this package should touch either.
+	Seats []Seat       `json:"-"`
+	RNG   *prng.Source `json:"-"`
 }
 
 func (s *State) playerByID(id string) *Player {

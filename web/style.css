@@ -155,6 +155,53 @@
    the ground, and body has to get out of the way. */
 :root[data-game="uno"] body { background: transparent; }
 
+/* ─────────────────── palette: Monopoly Myanmar ───────────────────
+   The board is the thing being looked at, and a Monopoly board is a pale field
+   with eight saturated colour bands on it — so the ground goes dark and quiet and
+   the board carries the colour. Green is the brand because the deeds and the
+   money are, and because it is the one hue none of the eight property groups
+   below uses at full strength. */
+
+:root[data-game="monopoly"] {
+  --brand-rgb: 22 92 62;         /* #165c3e deep green */
+  --accent-rgb: 227 178 62;      /* #e3b23e gold */
+  --surface-rgb: 250 247 240;    /* #faf7f0 board cream */
+  --grad-from-rgb: 22 92 62;
+  --grad-to-rgb: 227 178 62;
+  --muted-ink: #5c5a55;          /* 6.8:1 on the cream */
+
+  --shadow-rgb: 0 0 0;
+  --scrim-rgb: 0 0 0;
+
+  /* Ground family — a near-black table the board sits on. */
+  --bg: #14201a;
+  --bg-soft: #1e2b24;
+  --panel: #26332b;
+  --line: #3e4b43;
+  --ink: var(--surface);         /* 15.4:1 on the ground */
+  --muted: #a8b0aa;              /* 8.1:1 */
+
+  --accent-ink: #14201a;         /* 11.9:1 on the gold */
+  --danger: #b3261e;             /* 5.9:1 on the cream */
+
+  /* Surface family — the board and the panels. */
+  --surface-soft: #f1ece0;
+  --surface-line: #d5cdba;
+  --surface-ink: #14201a;
+
+  /* The eight property groups. Named here rather than in the board data: which
+     colour "orange" is drawn as is presentation, and the server only ever says
+     which set a square belongs to. */
+  --grp-brown: #7b4a2d;
+  --grp-lightblue: #7fc4e8;
+  --grp-pink: #cf4f8f;
+  --grp-orange: #e2822f;
+  --grp-red: #cf2b2b;
+  --grp-yellow: #e8cf3a;
+  --grp-green: #2f8f4f;
+  --grp-darkblue: #2b4fa8;
+}
+
 /* Surface family. Declaring the tokens on the container flips every descendant
    that reads --ink/--muted/--line/--bg-soft, so the rules below stay generic.
    The values come from whichever palette is in force; this rule only says which
@@ -301,9 +348,33 @@ textarea { resize: vertical; min-height: 84px; }
 .topnav {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 12px 20px;
-  background: var(--crimson); border-bottom: 1px solid var(--line);
+  background: var(--brand); border-bottom: 1px solid var(--line);
 }
-.brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--paper); }
+
+/* The way in to games still being tested.
+   Quiet to the point of invisibility until you look for it: three letters at
+   half opacity beside the logo, which is the whole idea — somebody who has not
+   been told what it is has no reason to press it. It sits next to the brand
+   rather than floating over the menu body so it cannot land on a tile when the
+   page is narrow. `margin-right: auto` keeps it left while the mute button
+   stays right. */
+.ptr {
+  margin-right: auto;
+  border: 1px solid rgb(255 255 255 / .28);
+  background: transparent; color: #fff;
+  opacity: .45;
+  border-radius: 999px; padding: 3px 10px;
+  font: inherit; font-size: 11px; font-weight: 800; letter-spacing: .12em;
+  cursor: pointer;
+}
+.ptr:hover, .ptr:focus-visible { opacity: .9; }
+/* Holding a key: no longer hiding, because at that point the person pressing it
+   already knows it is there and needs to see whether it is on. */
+.ptr.on { opacity: 1; border-color: rgb(255 255 255 / .7); }
+
+/* Wide enough to type a password into rather than a six-character room code. */
+.ptr-input { width: 100%; letter-spacing: normal; text-align: left; font-size: 16px; }
+.brand { font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
 
 .menu-body {
   width: min(1100px, 100%); margin: 0 auto;
@@ -314,12 +385,12 @@ textarea { resize: vertical; min-height: 84px; }
 .menu-head { display: grid; gap: 4px; text-align: center; }
 /* balance keeps the subtitle from dropping a single word onto its own line on a
    phone; browsers without it just wrap normally. */
-.menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--paper); text-wrap: balance; }
+.menu-title { margin: 0; font-size: 28px; line-height: 1.15; color: var(--ink); text-wrap: balance; }
 /* Every other heading in the app — the menu title, the rules panel's, a
    modal's — takes the serif face, distinct from the Outfit body copy under it. */
 .menu-title, h2, h3 { font-family: "PT Serif", serif; }
 .menu-sub { margin: 0; font-size: 14px; color: rgba(253,254,255,.82); text-wrap: balance; }
-.menu-status { margin: 0; font-size: 14px; color: var(--paper); font-weight: 600; }
+.menu-status { margin: 0; font-size: 14px; color: var(--ink); font-weight: 600; }
 
 /* Tracks are capped rather than left to stretch, and the grid is centred: with
    three games a 1fr grid stretches them across the whole width and leaves a bald
@@ -343,10 +414,10 @@ textarea { resize: vertical; min-height: 84px; }
 }
 .game-tile:hover:not(.locked) {
   transform: translateY(-3px);
-  border-color: var(--gold);
+  border-color: var(--accent);
   box-shadow: 0 12px 24px rgba(0,0,0,.3);
 }
-.game-tile:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.game-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
 /* The box art sits in a 3:4 well, the shape a card game's box photographs as.
    Cover-fit so a wrong-shaped scan crops rather than distorting. */
@@ -375,7 +446,7 @@ textarea { resize: vertical; min-height: 84px; }
    nested inside the tile's own. */
 .game-cta {
   align-self: stretch; text-align: center;
-  background: var(--gold); color: var(--crimson);
+  background: var(--accent); color: var(--accent-ink);
   font-size: 13px; font-weight: 700;
   border-radius: 9px; padding: 8px 10px;
 }
@@ -497,8 +568,12 @@ textarea { resize: vertical; min-height: 84px; }
 
 .table { display: flex; flex-direction: column; height: 100dvh; }
 
+/* Wraps rather than overflowing. Monopoly's topbar carries a language toggle as
+   well as the code, the banner and three buttons, which is 8px too wide for a
+   390px phone — and an overflowing topbar pushes the leave button off the edge of
+   the screen rather than just looking tight. */
 .topbar {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; row-gap: 6px;
   padding: 10px 14px; border-bottom: 1px solid var(--line);
 }
 .pill {
@@ -912,7 +987,7 @@ textarea { resize: vertical; min-height: 84px; }
 .alter-pos {
   position: absolute; top: 4px; left: 4px;
   font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  background: var(--crimson); color: var(--paper);
+  background: var(--brand); color: var(--ink);
   border-radius: 999px; padding: 2px 6px;
 }
 
@@ -942,7 +1017,7 @@ textarea { resize: vertical; min-height: 84px; }
    visibility toggle. */
 .lang-toggle { display: flex; gap: 4px; flex: none; }
 .lang {
-  font: inherit; font-size: 12px; font-weight: 700;
+  font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap;
   /* Full-contrast ink even when unselected: the gold fill already says which is
      chosen, and grey on paper turns Burmese diacritics to mush at this size. */
   color: var(--ink); background: var(--bg-soft);
@@ -954,8 +1029,12 @@ textarea { resize: vertical; min-height: 84px; }
 }
 /* And 12px is simply too small for those marks to resolve into letters at all —
    the label has to be bigger than the Latin one to be equally readable. */
-.lang[lang="my"] { font-size: 15px; line-height: 1.5; }
-.lang.on { color: var(--ink); border-color: var(--gold); background: var(--gold); }
+/* Not bold, and that is the fix rather than the taste: no Myanmar font here ships
+   a bold face, so the browser synthesises one by smearing each glyph sideways —
+   which welds a stack of diacritics into a blot. Legible weight beats matching the
+   Latin pill's weight. */
+.lang[lang="my"] { font-size: 15px; line-height: 1.5; font-weight: 500; }
+.lang.on { color: var(--accent-ink); border-color: var(--accent); background: var(--accent); }
 .lang:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 /* A real card beats a glyph for "which one is this in my hand" — but only if it
@@ -1166,6 +1245,35 @@ textarea { resize: vertical; min-height: 84px; }
   font-size: 13px; font-weight: 600; padding: 7px;
 }
 
+/* ─────────────────── monopoly: the column beside the board ───────────────────
+   Only Monopoly has this: the players and the play-by-play stacked in one column
+   rather than a seat strip across the top. Declared before the width query below
+   so that query can override it, rather than after where it would win.
+
+   `min-height: 0` on the panel is load-bearing and was missing. A flex item's
+   automatic minimum height is its *content's* height, and this log's content is
+   every line ever written — so `flex: 1` could not shrink it, the column grew
+   past the table's `100dvh`, and a long game scrolled the whole page instead of
+   the log. `.log` itself was never the problem: `overflow-y: auto` already forces
+   its own automatic minimum to zero, which is why the same markup behaves in the
+   games that lay the log out in a row.
+
+   `flex` rather than a fixed height is the other half of it. On a phone the board
+   is limited by width and stops well short of the bottom of the screen, so a
+   104px log left a band of nothing underneath. The log now takes whatever the
+   board does not want, and 104px is the *basis* rather than the height — what it
+   settles at when there is nothing spare. */
+.side-panel {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0;
+}
+.side-panel .log-panel {
+  flex: 1 1 104px;
+  height: auto; min-height: 0;
+}
+/* Collapsed, it is a header and nothing else, and must not go on claiming the
+   column it was just told to give back. */
+.side-panel .log-panel.collapsed { flex: none; }
 /* ─────────────────────────────── chat ───────────────────────────────
    Fixed to the window rather than placed in a game's layout, and that is the
    point: chat is the room's, works on the lobby screen too, and must not take
@@ -1277,6 +1385,26 @@ textarea { resize: vertical; min-height: 84px; }
     width: 300px; height: auto;
     border-top: 0; border-left: 1px solid var(--line);
   }
+
+  /* Monopoly stacks the players above the log in one column down the side. The
+     board is square, so its size is whatever the *shorter* axis allows — and a
+     seat strip across the top was costing it 130px of height for a row that had
+     width to spare. One column beside it gives that back to the board, which is
+     the thing people are trying to read.
+     `flex: none` because the column is a row item here, so 300px is its width
+     rather than a share of the row; the stacking and the min-height are already
+     set above. */
+  .side-panel {
+    width: 300px; flex: none;
+    border-left: 1px solid var(--line);
+  }
+  .side-panel .seats {
+    flex: none; flex-direction: column; overflow-x: visible;
+    padding: 10px; gap: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .side-panel .seat { min-width: 0; }
+  .side-panel .log-panel { width: auto; border-left: 0; }
   /* Collapsed sideways, the header would be a 300px empty bar, so shrink to a
      narrow spine instead and stand the label on its end. */
   .log-panel.collapsed { width: auto; }
@@ -1286,3 +1414,418 @@ textarea { resize: vertical; min-height: 84px; }
   }
   .log-panel.collapsed .log-head strong { writing-mode: vertical-rl; }
 }
+
+/* ─────────────────────────── monopoly: the board ───────────────────────────
+   Proportioned like a real board rather than as eleven equal cells: the corners
+   are wider than the edge squares, which is what buys the room for a name, a
+   price and a colour band to all be legible at once. Eleven equal cells was the
+   first version, and the report on it was the honest one — the text was too
+   small to read.
+
+   Two consequences fall out of the proportions:
+
+     * The side columns are wider than they are tall, so their text runs along
+       the long axis. That is `writing-mode`, not a transform: a rotated box
+       keeps the width it was given and wraps in the wrong direction, while
+       vertical writing mode sizes itself correctly and lets a name use the whole
+       square.
+     * The colour band sits on the *outer* edge of each square, the way it is
+       printed — which means four rules keyed off data-side rather than one.
+
+   Positions and sides come from gridPos() in games/monopoly/index.js: the
+   geometry is arithmetic, and forty hand-written positions is forty chances to
+   be wrong. */
+
+.board-wrap {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  padding: 10px; overflow: hidden;
+  container-type: size;
+  /* One square's worth of board, and the unit every size inside the board is a
+     share of — so the whole thing scales as one piece.
+
+     Declared here rather than on .board, and that is the fix for a real bug: the
+     dice live in .board-centre, which is .board's *sibling*, so a variable set on
+     .board was not in scope for them and every die came out zero-sized. */
+  --board-size: min(860px, 97cqmin);
+  --sq: calc(var(--board-size) / 11);
+}
+.board-wrap > * { grid-area: 1 / 1; }
+
+.board {
+  position: relative;
+  /* cqmin, not cqw: a board stretched to fill a widescreen window would put its
+     top row a screenful from its bottom one. */
+  width: var(--board-size); height: var(--board-size);
+  display: grid;
+  /* The classic ratio: a corner is a little over one and a half edge squares. */
+  grid-template-columns: 1.55fr repeat(9, 1fr) 1.55fr;
+  grid-template-rows: 1.55fr repeat(9, 1fr) 1.55fr;
+  gap: 2px;
+  background: var(--bg);
+  border: 2px solid rgb(var(--scrim-rgb) / .55);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+/* One square. A button because it is one: tapping it opens the card that carries
+   the full name and the rent. */
+.tile {
+  position: relative; overflow: hidden;
+  background: var(--surface); color: var(--surface-ink);
+  border: 0; border-radius: 3px;
+  padding: 0; font: inherit;
+  cursor: pointer;
+  display: grid;
+  transition: box-shadow .12s ease;
+}
+.tile:hover { box-shadow: inset 0 0 0 2px var(--accent); z-index: 3; }
+.tile.corner { background: var(--surface-soft); }
+
+/* The body is everything that reads as text, and the piece that turns on the
+   side columns. */
+.tile-body {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(var(--sq) * .04);
+  padding: calc(var(--sq) * .06);
+  text-align: center;
+  min-width: 0; min-height: 0;
+}
+.tile[data-side="left"] .tile-body,
+.tile[data-side="right"] .tile-body {
+  /* Text along the long axis. vertical-rl reads top to bottom; the left column
+     is turned the other way up so both sides face outward, as printed. */
+  writing-mode: vertical-rl;
+}
+.tile[data-side="left"] .tile-body { transform: rotate(180deg); }
+
+/* Room for the band, on whichever edge is the outer one.
+
+   The left column asks for it on the *right*, which is not a typo: that body is
+   turned through 180 degrees, so its padding lands on the opposite side from the
+   one named here. Padding the physical left put the gap on the inner edge and
+   the band ate the first letter of every name — "Mawlamyine" came out as
+   "awlamyin". */
+.tile[data-side="top"]    .tile-body { padding-top: calc(var(--sq) * .3); }
+.tile[data-side="bottom"] .tile-body { padding-bottom: calc(var(--sq) * .3); }
+.tile[data-side="left"]   .tile-body { padding-right: calc(var(--sq) * .3); }
+.tile[data-side="right"]  .tile-body { padding-right: calc(var(--sq) * .3); }
+
+/* A corner reads straight, whichever side the arithmetic filed it under — the
+   top-left one comes out as "left" and was rendered on its side. And it has no
+   band, so it keeps none of the room left for one: after the per-side rules
+   above, not before, or the bottom corners keep that padding and clip their own
+   label. */
+.tile.corner .tile-body {
+  writing-mode: horizontal-tb;
+  transform: none;
+  padding: calc(var(--sq) * .07);
+}
+
+.tile-name {
+  font-weight: 700;
+  /* A share of the board so the whole thing scales together, with a floor: forty
+     squares across a phone puts a square at 33px, and .19 of that is six pixels.
+     Below the floor the board is a map and the names are read by tapping a
+     square, which is what the detail card is for. */
+  font-size: max(8px, calc(var(--sq) * .185));
+  line-height: 1.1;
+  letter-spacing: -.01em;
+  /* Three lines at most, then cut: the detail card carries the full name, and a
+     square that grows to fit "Yangon Central Station" breaks the grid. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Burmese needs more room per line than Latin at the same size. */
+.tile-name:lang(my) { font-size: max(8px, calc(var(--sq) * .165)); line-height: 1.35; }
+
+.tile-price {
+  font-size: max(8px, calc(var(--sq) * .16));
+  font-weight: 800;
+  padding: 0 calc(var(--sq) * .07);
+  border-radius: 999px;
+  background: rgb(var(--scrim-rgb) / .08);
+  color: var(--muted-ink);
+  white-space: nowrap;
+}
+
+/* The glyph a special square is known by — the chest, the question mark, the
+   plane. A property has its colour band instead and gets none. */
+.tile-icon { font-size: calc(var(--sq) * .32); line-height: 1; }
+/* A station or a utility carries a band, a name, a price and an icon — one thing
+   too many for an edge square, and it was the name that lost. The icon gives way
+   instead, and the name clamps to two lines rather than three. */
+.tile:not(.corner) .tile-icon { font-size: calc(var(--sq) * .23); }
+.tile:not(.corner) .tile-name { -webkit-line-clamp: 2; }
+/* The side squares are wider than they are tall, and their text runs down the
+   long axis — so a "line" there is a column, and there is room for three of them.
+   Two truncated "Mawlamyine" and "Electricity Board"; three do not. */
+.tile[data-side="left"]:not(.corner) .tile-name,
+.tile[data-side="right"]:not(.corner) .tile-name { -webkit-line-clamp: 3; }
+.tile.corner .tile-icon { font-size: calc(var(--sq) * .45); }
+.tile.corner .tile-name { font-size: calc(var(--sq) * .17); }
+
+/* ─── the colour band, on the outer edge ─── */
+
+.tile-band { position: absolute; background: var(--band, transparent); }
+.tile[data-side="top"]    .tile-band { inset: 0 0 auto 0; height: 24%; }
+.tile[data-side="bottom"] .tile-band { inset: auto 0 0 0; height: 24%; }
+.tile[data-side="left"]   .tile-band { inset: 0 auto 0 0; width: 24%; }
+.tile[data-side="right"]  .tile-band { inset: 0 0 0 auto; width: 24%; }
+.tile-band::after {
+  content: ""; position: absolute; inset: 0;
+  box-shadow: inset 0 0 0 1px rgb(var(--scrim-rgb) / .3);
+}
+
+.tile[data-group="brown"]     { --band: var(--grp-brown); }
+.tile[data-group="lightblue"] { --band: var(--grp-lightblue); }
+.tile[data-group="pink"]      { --band: var(--grp-pink); }
+.tile[data-group="orange"]    { --band: var(--grp-orange); }
+.tile[data-group="red"]       { --band: var(--grp-red); }
+.tile[data-group="yellow"]    { --band: var(--grp-yellow); }
+.tile[data-group="green"]     { --band: var(--grp-green); }
+.tile[data-group="darkblue"]  { --band: var(--grp-darkblue); }
+/* Stations and utilities belong to no colour set, but they are still bought and
+   still charge rent — so they get a band of their own rather than reading as
+   scenery. */
+.tile[data-kind="station"] { --band: #6b7a8f; }
+.tile[data-kind="utility"] { --band: #4a9db5; }
+
+/* ─── ownership ─── */
+
+/* A deed is marked by tinting the whole square in the owner's colour and putting
+   a solid edge on the inner side. "Who owns this" has to be answerable at a
+   glance from across a table, and a thin bar along one edge was not.
+   --own is set from JS to the owner's token colour. */
+.tile.owned { background: color-mix(in srgb, var(--own) 26%, var(--surface)); }
+.tile.owned::after { content: ""; position: absolute; background: var(--own); }
+.tile[data-side="top"].owned::after    { inset: auto 0 0 0; height: 6%; }
+.tile[data-side="bottom"].owned::after { inset: 0 0 auto 0; height: 6%; }
+.tile[data-side="left"].owned::after   { inset: 0 0 0 auto; width: 6%; }
+.tile[data-side="right"].owned::after  { inset: 0 auto 0 0; width: 6%; }
+.tile.mine { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* ─── houses and hotels ─── */
+
+/* On the band, which is where a real board prints them, and which is the one
+   strip of a square carrying no text — so a row of houses costs nothing that was
+   being read. Laid out along the band, so the same rule works on all four sides
+   once the flex direction follows the edge. */
+.tile-houses {
+  position: absolute; display: flex; gap: calc(var(--sq) * .05);
+  align-items: center; justify-content: center;
+  pointer-events: none; z-index: 1;
+}
+.tile[data-side="top"]    .tile-houses { inset: 0 0 auto 0; height: 24%; }
+.tile[data-side="bottom"] .tile-houses { inset: auto 0 0 0; height: 24%; }
+.tile[data-side="left"]   .tile-houses { inset: 0 auto 0 0; width: 24%; flex-direction: column; }
+.tile[data-side="right"]  .tile-houses { inset: 0 0 0 auto; width: 24%; flex-direction: column; }
+
+/* A house is a little green block with a roof; a hotel is one wide red one. Two
+   shapes rather than two colours of the same shape, because the difference
+   between four houses and a hotel is the difference between K550,000 and
+   K950,000 and has to be readable at a glance. */
+.tile-houses i {
+  width: calc(var(--sq) * .13); height: calc(var(--sq) * .13);
+  background: #1f9d4d;
+  border: 1px solid rgb(var(--scrim-rgb) / .55);
+  border-radius: 1px 1px 0 0;
+  clip-path: polygon(50% 0, 100% 38%, 100% 100%, 0 100%, 0 38%);
+}
+.tile-houses i.hotel {
+  width: calc(var(--sq) * .34); height: calc(var(--sq) * .15);
+  background: #d0342c;
+  border-radius: 2px;
+  clip-path: none;
+}
+
+/* ─── tokens ─── */
+
+/* One layer over the whole board rather than a container per square, which is
+   what lets a piece travel between squares instead of being destroyed on one
+   and rebuilt on the next. Spanning the grid by its own area, so it shares the
+   board's coordinate space and a token's transform is in board pixels.
+
+   pointer-events: none throughout — a piece standing on a square must not stop
+   you tapping that square to read its price. */
+.token-layer {
+  grid-area: 1 / 1 / -1 / -1;
+  position: relative;
+  pointer-events: none;
+  z-index: 2;
+}
+.token {
+  position: absolute; top: 0; left: 0;
+  width: calc(var(--sq) * .3); height: calc(var(--sq) * .3);
+  border-radius: 50%;
+  border: 2px solid rgb(var(--surface-rgb) / .95);
+  box-shadow: 0 1px 3px rgb(var(--scrim-rgb) / .6);
+  /* The resting state only. A walk is driven by the Web Animations API, which
+     overrides this for its duration — see tokens.js for why a transition is the
+     wrong tool for a path through forty squares. */
+  transition: transform .18s ease;
+}
+.token.me { border-color: var(--accent); }
+/* Lifted slightly while travelling, so a piece crossing a crowded corner reads
+   as being on top of the others rather than merging with them. */
+.token.walking {
+  z-index: 3;
+  box-shadow: 0 3px 8px rgb(var(--scrim-rgb) / .7);
+}
+
+/* A throw in the air. The faces are being swapped from JS; this is the shake
+   that says they are not settled yet. */
+.dice.rolling .die { animation: die-shake .22s linear infinite; }
+@keyframes die-shake {
+  0%   { transform: translateY(0) rotate(-4deg); }
+  50%  { transform: translateY(-3px) rotate(4deg); }
+  100% { transform: translateY(0) rotate(-4deg); }
+}
+
+/* Asked for less motion, and this is exactly what that preference is about:
+   pieces sliding and dice shaking. The game is unaffected — tokens still move,
+   they simply arrive. tokens.js makes the same check before animating at all,
+   so this is the belt to its braces. */
+@media (prefers-reduced-motion: reduce) {
+  .token { transition: none; }
+  .dice.rolling .die { animation: none; }
+}
+
+/* ─── the middle ─── */
+
+/* Inside the ring rather than beside it: it is where a real board keeps its
+   dice, and it is the only space a forty-square ring leaves.
+
+   Positioned, and above the board — without this the squares swallow the clicks,
+   because .board and its tiles are positioned and so paint over a static sibling
+   however late that sibling comes in the markup. The symptom is a Roll button
+   that is visible, enabled, and does nothing. */
+.board-centre {
+  position: relative; z-index: 1;
+  width: min(72%, 520px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 8px; text-align: center;
+  pointer-events: none;
+}
+.board-centre > * { pointer-events: auto; }
+
+.dice { display: flex; align-items: center; gap: 10px; min-height: 1em; }
+/* Real pips on a paper-white die, rather than the ⚀-⚅ glyphs, which render at
+   wildly different weights across platforms and are unreadable when small. */
+.die {
+  width: calc(var(--sq) * .95); height: calc(var(--sq) * .95);
+  display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  gap: calc(var(--sq) * .04); padding: calc(var(--sq) * .13);
+  background: var(--surface);
+  border-radius: calc(var(--sq) * .16);
+  box-shadow: 0 calc(var(--sq) * .05) calc(var(--sq) * .12) rgb(var(--scrim-rgb) / .5);
+}
+.die i {
+  border-radius: 50%; background: var(--surface-ink);
+  width: 100%; height: 100%;
+}
+.die-total {
+  font-weight: 800; font-size: calc(var(--sq) * .3);
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 999px; padding: calc(var(--sq) * .04) calc(var(--sq) * .22);
+}
+.board-status { margin: 0; color: var(--muted); font-size: 14px; font-weight: 600; }
+.board-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+/* A token pip beside a name in the seat strip, so "whose piece is the red one"
+   is answered without hovering it. */
+.seat-pip {
+  width: 11px; height: 11px; flex: none;
+  border-radius: 50%; border: 1px solid rgb(var(--surface-rgb) / .8);
+}
+
+/* The detail card's rows: price, rent, owner. */
+.tile-detail {
+  margin: 0; display: grid; grid-template-columns: auto 1fr;
+  gap: 5px 16px; text-align: left; font-size: 14px;
+}
+.tile-detail dt { color: var(--muted); }
+/* The rent row is six figures on one line, and the one in force is bracketed
+   rather than styled — it has to survive being read out loud. Tabular figures so
+   the ladder lines up as a ladder. */
+.tile-detail dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Build and Sell, inside the detail card rather than in the board's middle: you
+   build on a square, so the controls belong on that square's card. Which also
+   means they cost no room at all until somebody taps a deed. */
+.build-row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  align-items: center;
+}
+.build-why, .build-stock {
+  flex-basis: 100%; margin: 0; text-align: center;
+  font-size: 13px; color: var(--muted);
+}
+.build-why { font-weight: 600; }
+
+/* What the slice does not have yet, called out in the rules sheet rather than
+   left for a player to discover by landing on a square that does nothing. */
+.rules-slice {
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px dashed var(--line); border-radius: 10px;
+  background: var(--bg-soft);
+}
+.rules-slice h3 { margin-top: 0; }
+
+/* On a phone the board is the whole screen. Past this size a square cannot carry
+   a price as well as a name, so the price goes and the detail card becomes the
+   way to ask — which is one tap, and was always how the rent was going to be
+   read anyway. */
+@media (max-width: 620px) {
+  .board-wrap { --board-size: min(460px, 98cqmin); }
+  .tile-price { display: none; }
+  .tile-name { -webkit-line-clamp: 2; }
+  /* The board takes what it needs rather than all the spare height: on a phone it
+     is limited by width, and flex: 1 left a screenful of nothing between the
+     board and the players.
+     Sized explicitly rather than by `flex: none`, which collapsed it to nothing:
+     container-type: size makes an element's size independent of its contents, so
+     it has to be given one. Square, because the board is. */
+  .board-wrap { flex: none; width: 100%; aspect-ratio: 1; }
+  .board-centre { width: min(78%, 320px); gap: 10px; }
+  .board-status { font-size: 12px; }
+}
+
+/* ─────────────────────── monopoly: a drawn card ───────────────────────
+   The card the two decks deal, shown to the whole table rather than only to
+   whoever drew it: at a real table the card is read out, and watching somebody
+   else's luck is half of why the deck is there.
+
+   Two decks, two colours, and they are the colours the squares use — so the card
+   in front of you and the square you are standing on are visibly the same
+   thing. */
+.draw-card {
+  display: grid; justify-items: center; gap: 8px;
+  padding: 18px 16px;
+  border-radius: 14px;
+  border: 2px solid var(--band, var(--surface-line));
+  background: color-mix(in srgb, var(--band, var(--surface)) 8%, var(--surface));
+  text-align: center;
+}
+.draw-card[data-deck="chance"] { --band: #e2822f; }
+.draw-card[data-deck="chest"]  { --band: #2f8f4f; }
+
+.draw-emoji { font-size: 44px; line-height: 1; }
+.draw-title { font-size: 18px; line-height: 1.25; }
+.draw-title:lang(my) { font-size: 17px; line-height: 1.6; }
+/* The joke, in the author's own words. Quieter than the headline and quieter
+   than the rule, because it is the part that is not information. */
+.draw-flavour {
+  margin: 0; font-size: 14px; font-style: italic;
+  color: var(--muted-ink); line-height: 1.4;
+}
+.draw-flavour:lang(my) { font-style: normal; line-height: 1.85; }
+/* What it actually does, generated from the effects rather than written into the
+   pack — so a card cannot say one thing and do another. */
+.draw-effect {
+  margin: 0; font-weight: 800; font-size: 15px;
+  padding: 8px 14px; border-radius: 999px;
+  background: var(--band, var(--surface-soft));
+  color: #fff;
+}
+.draw-effect:lang(my) { line-height: 1.8; }

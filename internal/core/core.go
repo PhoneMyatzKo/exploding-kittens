@@ -66,6 +66,12 @@ type ClientMsg struct {
 	// UNO: a wild names a colour, and going down to one card is announced.
 	Colour string `json:"colour"`
 	SayUno bool   `json:"sayUno"`
+
+	// Monopoly: which square a build or a sell is about. Every other move there
+	// acts on wherever the player is standing, which the server already knows —
+	// building is the one that names a square, because you build on a set rather
+	// than on the square you happen to be on.
+	Tile int `json:"tile"`
 }
 
 // Entry is one line of the shared play-by-play, and the only shape in which a
@@ -87,9 +93,24 @@ type Entry struct {
 	// Count, Points and Colour are UNO's: how many cards a draw moved, what a
 	// round scored, and which colour is in force. Omitted everywhere else, so a
 	// game that has no use for them costs nothing.
-	Count   int    `json:"count,omitempty"`
-	Points  int    `json:"points,omitempty"`
-	Colour  string `json:"colour,omitempty"`
+	Count  int    `json:"count,omitempty"`
+	Points int    `json:"points,omitempty"`
+	Colour string `json:"colour,omitempty"`
+	// Tile and Dice are Monopoly's: which square an entry is about, and what was
+	// thrown. A pointer rather than an int because square zero is GO — a real
+	// answer that `omitempty` would drop — and a slice rather than [2]int because
+	// a fixed-size array is never empty and would go out on every entry.
+	Tile *int  `json:"tile,omitempty"`
+	Dice []int `json:"dice,omitempty"`
+	// Card is which Chance or Community Chest card was turned over, as an index
+	// into the pack the client fetched alongside the board. A pointer for the
+	// same reason Tile is one: card zero is a real card.
+	Card *int `json:"card,omitempty"`
+	// Houses is Monopoly's: how many buildings stand on the square after a build
+	// or a sell. A pointer for the third time and the same reason — zero is the
+	// real answer when the last house comes down, and the log has to be able to
+	// say so long after the board has moved on.
+	Houses  *int   `json:"houses,omitempty"`
 	OnlyFor string `json:"-"`
 }
 
@@ -159,6 +180,22 @@ type Game interface {
 	// View builds the payload one client receives, lobby included: only the game
 	// knows which of its fields its own renderer needs.
 	View(sh Shell) any
+
+	// Snapshot and Restore are how a game survives the process it is running in.
+	// A room writes one on shutdown and hands it back on start; between those two
+	// points the players' browsers have been sitting on a dropped socket, and they
+	// reconnect with the token they already hold.
+	//
+	// Snapshot returns nil for a game that has not been dealt — there is nothing
+	// to save but the lobby, and the room owns that. Restore(nil) is likewise a
+	// no-op, so a saved lobby comes back as a lobby.
+	//
+	// The bytes are opaque to the room and are only ever given back to the same
+	// game. Gob rather than JSON, because a game's own state is Go-to-Go and its
+	// json tags belong to the *client* payload: Exploding Kittens hides a card's
+	// type from the wire, and a JSON snapshot would lose every card's identity.
+	Snapshot() ([]byte, error)
+	Restore(data []byte) error
 }
 
 // Errors a Game may return that the room recognises rather than merely forwards.

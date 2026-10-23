@@ -1,8 +1,8 @@
 package game
 
 import (
+	"boardgame/kittens/internal/prng"
 	"fmt"
-	"math/rand"
 	"testing"
 )
 
@@ -18,7 +18,7 @@ func c(colour Colour, rank Rank) spec { return spec{colour, rank} }
 // mkState builds a fully deterministic table: hands in seat order, the draw pile
 // top-first, and the given card face-up on the discard.
 func mkState(hands [][]spec, draw []spec, top spec) *State {
-	s := &State{Phase: PhaseTurn, Dir: 1, Round: 1, Colour: top.colour, rng: rand.New(rand.NewSource(1))}
+	s := &State{Phase: PhaseTurn, Dir: 1, Round: 1, Colour: top.colour, RNG: prng.New(uint64(1))}
 	id := 0
 	next := func(sp spec) Card {
 		card := newCard(id, sp.colour, sp.rank)
@@ -31,7 +31,7 @@ func mkState(hands [][]spec, draw []spec, top spec) *State {
 			p.Hand = append(p.Hand, next(sp))
 		}
 		s.Players = append(s.Players, p)
-		s.seats = append(s.seats, Seat{ID: p.ID, Name: p.Name})
+		s.Seats = append(s.Seats, Seat{ID: p.ID, Name: p.Name})
 	}
 	for _, sp := range draw {
 		s.Draw = append(s.Draw, next(sp))
@@ -701,11 +701,11 @@ func TestNextRoundKeepsScoresAndDealsAfresh(t *testing.T) {
 
 func TestNewGamePlayerCount(t *testing.T) {
 	one := []Seat{{ID: "p0"}}
-	if _, _, err := NewGame(one, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
+	if _, _, err := NewGame(one, prng.New(uint64(1))); err != ErrPlayerCount {
 		t.Errorf("one player: got %v, want ErrPlayerCount", err)
 	}
 	eleven := make([]Seat, 11)
-	if _, _, err := NewGame(eleven, rand.New(rand.NewSource(1))); err != ErrPlayerCount {
+	if _, _, err := NewGame(eleven, prng.New(uint64(1))); err != ErrPlayerCount {
 		t.Errorf("eleven players: got %v, want ErrPlayerCount", err)
 	}
 }
@@ -720,7 +720,7 @@ func TestNewGameIsAlwaysLegal(t *testing.T) {
 			for i := range seats {
 				seats[i] = Seat{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("P%d", i)}
 			}
-			s, ev, err := NewGame(seats, rand.New(rand.NewSource(seed)))
+			s, ev, err := NewGame(seats, prng.New(uint64(seed)))
 			if err != nil {
 				t.Fatalf("seed %d, %d players: %v", seed, n, err)
 			}
